@@ -309,5 +309,6 @@ uv run --package analysis_dashboard python -c "import neo4j; print(neo4j.__versi
 | `No model available` | No API keys in `.env` | Add `GROQ_API_KEY` or `GEMINI_API_KEY` |
 | Port 8000 already in use | Old server process still running | `taskkill /F /IM python.exe` (Windows) or `kill $(lsof -ti:8000)` (Linux/Mac) |
 | `uv trampoline failed` (Windows paths with spaces) | Space in directory path | Use `python -m streamlit run` instead of `streamlit run` |
-#   h l p _ g r a p h _ k n o w l e d g e _ a g e n t  
+#   h l p _ g r a p h _ k n o w l e d g e _ a g e n t 
+ 
  
