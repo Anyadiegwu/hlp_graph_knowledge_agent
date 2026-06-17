@@ -1,0 +1,73 @@
+[2026-06-11 23:44:53] [ANALYSIS_AGENT] [INFO] Analysis Agent log: C:\Users\Victor\My Files\Kodecamp\stage3\hlp_graph_knowledge_agent\analysis_agent.log
+[2026-06-11 23:44:59] [ANALYSIS_AGENT] [INFO] Analysis agent built. model=ChatGoogleGenerativeAI tools=7
+[2026-06-11 23:44:59] [ANALYSIS_AGENT] [INFO] Analysis query: Find all sessions from the last 24 hours where the internal CRAG tool failed, and show me a chart of client-side latency
+[2026-06-11 23:47:07] [ANALYSIS_AGENT] [INFO] Analysis Agent log: C:\Users\Victor\My Files\Kodecamp\stage3\hlp_graph_knowledge_agent\analysis_agent.log
+[2026-06-11 23:47:11] [ANALYSIS_AGENT] [INFO] Analysis agent built. model=ChatGoogleGenerativeAI tools=7
+[2026-06-11 23:47:11] [ANALYSIS_AGENT] [INFO] Analysis query: Find all sessions from the last 24 hours where the internal CRAG tool failed, and show me a chart of client-side latency
+[2026-06-11 23:47:14] [ANALYSIS_AGENT] [INFO] get_log_statistics called.
+[2026-06-11 23:47:14] [ANALYSIS_AGENT] [INFO] Stats: total=84 sessions=0 errors=0
+[2026-06-11 23:47:16] [ANALYSIS_AGENT] [INFO] semantic_log_search: query='CRAG pipeline failure' k=10
+[2026-06-11 23:47:18] [ANALYSIS_AGENT] [INFO] semantic_log_search returned 10 results.
+[2026-06-11 23:47:21] [ANALYSIS_AGENT] [INFO] latency_trend_chart: window=5 save_path=latency_chart.png
+[2026-06-11 23:47:30] [ANALYSIS_AGENT] [INFO] latency_trend_chart: Latency Summary (ms):
+  query_knowledge: mean=4183.8  median=4219.3  max=4266.6  n=3
+  reflect_answer: mean=48210.1  med
+[2026-06-11 23:47:41] [ANALYSIS_AGENT] [INFO] Analysis query complete. steps=7
+[2026-06-17 01:04:47] [ANALYSIS_AGENT] [INFO] Analysis Agent log: C:\Users\Victor\My Files\Kodecamp\stage3\hlp_graph_knowledge_agent\analysis_agent.log
+[2026-06-17 01:04:53] [ANALYSIS_AGENT] [INFO] Analysis agent built. model=ChatGoogleGenerativeAI tools=7
+[2026-06-17 01:04:53] [ANALYSIS_AGENT] [INFO] Analysis query: Find all sessions from the last 24 hours where the internal CRAG tool failed, and show me a chart of client-side latency
+[2026-06-17 01:05:00] [ANALYSIS_AGENT] [INFO] get_log_statistics called.
+[2026-06-17 01:05:00] [ANALYSIS_AGENT] [INFO] Stats: total=56 sessions=0 errors=0
+[2026-06-17 01:05:02] [ANALYSIS_AGENT] [INFO] semantic_log_search: query='CRAG tool failed' k=20
+[2026-06-17 01:05:04] [ANALYSIS_AGENT] [INFO] semantic_log_search returned 20 results.
+[2026-06-17 01:05:08] [ANALYSIS_AGENT] [INFO] latency_trend_chart: window=5 save_path=crag_latency_trend.png
+[2026-06-17 01:05:13] [ANALYSIS_AGENT] [INFO] latency_trend_chart: Latency Summary (ms):
+  query_knowledge: mean=4424.8  median=4424.8  max=4430.9  n=2
+  reflect_answer: mean=12262.6  med
+[2026-06-17 01:05:18] [ANALYSIS_AGENT] [INFO] Analysis query complete. steps=7
+[2026-06-17 01:12:39] [ANALYSIS_AGENT] [INFO] Analysis query: Find all sessions from the last 24 hours where the internal CRAG tool failed, and show me a chart of client-side latency
+[2026-06-17 01:12:42] [ANALYSIS_AGENT] [INFO] get_log_statistics called.
+[2026-06-17 01:12:42] [ANALYSIS_AGENT] [INFO] Stats: total=56 sessions=0 errors=0
+[2026-06-17 01:12:45] [ANALYSIS_AGENT] [INFO] semantic_log_search: query='CRAG pipeline failure' k=10
+[2026-06-17 01:12:46] [ANALYSIS_AGENT] [INFO] semantic_log_search returned 10 results.
+[2026-06-17 01:12:48] [ANALYSIS_AGENT] [INFO] latency_trend_chart: window=5 save_path=client_side_latency_chart.png
+[2026-06-17 01:12:51] [ANALYSIS_AGENT] [INFO] latency_trend_chart: Latency Summary (ms):
+  query_knowledge: mean=4424.8  median=4424.8  max=4430.9  n=2
+  reflect_answer: mean=12262.6  med
+[2026-06-17 01:12:55] [ANALYSIS_AGENT] [INFO] Analysis query complete. steps=7
+[2026-06-17 01:15:06] [ANALYSIS_AGENT] [INFO] Analysis query: Generate a latency chart
+[2026-06-17 01:15:08] [ANALYSIS_AGENT] [INFO] latency_trend_chart: window=5 save_path=None
+[2026-06-17 01:15:08] [ANALYSIS_AGENT] [INFO] latency_trend_chart: Latency Summary (ms):
+  query_knowledge: mean=4424.8  median=4424.8  max=4430.9  n=2
+  reflect_answer: mean=12262.6  med
+[2026-06-17 01:15:10] [ANALYSIS_AGENT] [INFO] Analysis query complete. steps=3
+[2026-06-17 01:15:58] [ANALYSIS_AGENT] [INFO] Analysis query: Generate a latency trend chart
+[2026-06-17 01:15:59] [ANALYSIS_AGENT] [INFO] latency_trend_chart: window=5 save_path=None
+[2026-06-17 01:16:00] [ANALYSIS_AGENT] [INFO] latency_trend_chart: Latency Summary (ms):
+  query_knowledge: mean=4424.8  median=4424.8  max=4430.9  n=2
+  reflect_answer: mean=12262.6  med
+[2026-06-17 01:16:02] [ANALYSIS_AGENT] [INFO] Analysis query complete. steps=3
+[2026-06-17 01:17:31] [ANALYSIS_AGENT] [INFO] Analysis Agent log: C:\Users\Victor\My Files\Kodecamp\stage3\hlp_graph_knowledge_agent\analysis_agent.log
+[2026-06-17 01:17:36] [ANALYSIS_AGENT] [INFO] Analysis agent built. model=ChatGoogleGenerativeAI tools=7
+[2026-06-17 01:17:36] [ANALYSIS_AGENT] [INFO] Analysis query: Find all sessions from the last 24 hours where the internal CRAG tool failed, and show me a chart of client-side latency
+[2026-06-17 01:17:39] [ANALYSIS_AGENT] [INFO] get_log_statistics called.
+[2026-06-17 01:17:39] [ANALYSIS_AGENT] [INFO] Stats: total=56 sessions=0 errors=0
+[2026-06-17 01:17:42] [ANALYSIS_AGENT] [INFO] semantic_log_search: query='CRAG pipeline failure' k=10
+[2026-06-17 01:17:46] [ANALYSIS_AGENT] [INFO] semantic_log_search returned 10 results.
+[2026-06-17 01:18:00] [ANALYSIS_AGENT] [INFO] latency_trend_chart: window=5 save_path=client_side_latency_chart.png
+[2026-06-17 01:18:03] [ANALYSIS_AGENT] [INFO] latency_trend_chart: Latency Summary (ms):
+  query_knowledge: mean=4424.8  median=4424.8  max=4430.9  n=2
+  reflect_answer: mean=12262.6  med
+[2026-06-17 01:18:41] [ANALYSIS_AGENT] [INFO] Analysis query complete. steps=7
+[2026-06-17 02:05:48] [ANALYSIS_AGENT] [INFO] Analysis Agent log: C:\Users\Victor\My Files\Kodecamp\stage3\hlp_graph_knowledge_agent\analysis_agent.log
+[2026-06-17 02:05:53] [ANALYSIS_AGENT] [INFO] Analysis agent built. model=ChatGoogleGenerativeAI tools=7
+[2026-06-17 02:05:53] [ANALYSIS_AGENT] [INFO] Analysis query: Find all sessions from the last 24 hours where the internal CRAG tool failed, and show me a chart of client-side latency
+[2026-06-17 02:05:57] [ANALYSIS_AGENT] [INFO] get_log_statistics called.
+[2026-06-17 02:05:57] [ANALYSIS_AGENT] [INFO] Stats: total=85 sessions=0 errors=0
+[2026-06-17 02:06:00] [ANALYSIS_AGENT] [INFO] semantic_log_search: query='CRAG pipeline failures' k=20
+[2026-06-17 02:06:03] [ANALYSIS_AGENT] [INFO] semantic_log_search returned 20 results.
+[2026-06-17 02:06:05] [ANALYSIS_AGENT] [INFO] latency_trend_chart: window=5 save_path=crag_latency_trend.png
+[2026-06-17 02:06:08] [ANALYSIS_AGENT] [INFO] latency_trend_chart: Latency Summary (ms):
+  query_knowledge: mean=2276.7  median=2277.6  max=2383.9  n=3
+  reflect_answer: mean=7510.8  medi
+[2026-06-17 02:06:12] [ANALYSIS_AGENT] [INFO] Analysis query complete. steps=7
