@@ -1,17 +1,3 @@
-# analysis_dashboard/src/analysis_dashboard/app.py
-#
-# HLP Graph Knowledge Agent — Stage 3 — Streamlit Diagnostic Dashboard
-#
-# Human-in-the-loop control plane for the HLP distributed MCP system.
-#
-# Features:
-#   • Natural language chat interface → routes to Log Analysis Agent
-#   • Step-by-step agent reasoning display
-#   • Inline trend charts (latency, tokens, errors, full dashboard)
-#   • Neo4j commit notifications
-#   • Log store stats overview
-#   • Session explorer sidebar
-
 from __future__ import annotations
 
 import asyncio

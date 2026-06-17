@@ -1,12 +1,3 @@
-# analysis_dashboard/src/analysis_dashboard/store_reader.py
-#
-# Read-only adapter that lets the analysis_dashboard process access
-# the HLPLogStore written by agent_client without importing from
-# that package (maintaining process isolation).
-#
-# This avoids cross-package imports by re-implementing only the
-# read operations the analysis agent needs, pointing at the same DB file.
-
 from __future__ import annotations
 
 import json

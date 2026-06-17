@@ -1,19 +1,3 @@
-# analysis_dashboard/src/analysis_dashboard/agent.py
-#
-# HLP Graph Knowledge Agent — Stage 3 — Independent Log Analysis Agent
-#
-# Completely isolated from the MCP Client/Server runtime.
-# Runs as a separate process via:  uv run --package analysis_dashboard start-analysis-agent
-#
-# Tools exposed to the agent:
-#   1. semantic_log_search    — vector similarity search over HLPLogStore
-#   2. get_log_statistics     — aggregate stats from the SQLite store
-#   3. sync_graph_to_neo4j    — project all logs into Neo4j Aura DB
-#   4. latency_trend_chart    — moving-average latency chart (matplotlib)
-#   5. token_metrics_chart    — token consumption chart
-#   6. error_frequency_chart  — rolling error frequency chart
-#   7. full_dashboard_chart   — comprehensive 4-panel system health chart
-
 from __future__ import annotations
 
 import json

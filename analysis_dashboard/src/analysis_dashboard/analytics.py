@@ -1,16 +1,3 @@
-# analysis_dashboard/src/analysis_dashboard/analytics.py
-#
-# HLP Graph Knowledge Agent — Stage 3 — Trend Analytics Toolkit
-#
-# Provides LangChain @tool functions for the Log Analysis Agent:
-#   • compute_latency_trend   — moving-average latency per tool over time
-#   • compute_token_metrics   — token consumption patterns by session/type
-#   • compute_error_frequency — rolling error count over time windows
-#   • generate_dashboard_chart— saves a comprehensive multi-panel chart to disk
-#
-# All chart tools return a base64 PNG for Streamlit rendering AND
-# optionally save the file to disk when save_path is provided.
-
 from __future__ import annotations
 
 import base64
@@ -23,7 +10,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 import matplotlib
-matplotlib.use("Agg")  # non-interactive backend for server/agent use
+matplotlib.use("Agg") 
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import seaborn as sns
@@ -35,7 +22,12 @@ logger = logging.getLogger("analysis_dashboard.analytics")
 # Use a clean seaborn theme
 sns.set_theme(style="darkgrid", palette="muted")
 
-CHART_OUTPUT_DIR = Path(os.getenv("CHART_OUTPUT_DIR", "./charts"))
+# Resolve charts/ relative to the repo root, not the process cwd.
+# __file__ = <repo_root>/analysis_dashboard/src/analysis_dashboard/analytics.py
+# parents[3] = repo root
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_env_chart_dir = os.getenv("CHART_OUTPUT_DIR", "")
+CHART_OUTPUT_DIR = Path(_env_chart_dir) if _env_chart_dir else (_REPO_ROOT / "charts")
 
 
 def _ensure_chart_dir() -> Path:
@@ -144,6 +136,9 @@ def compute_latency_trend(
 
     plt.tight_layout()
     chart_b64 = _fig_to_base64(fig)
+    if save_path is None:
+        ts_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        save_path = str(_ensure_chart_dir() / f"latency_trend_{ts_str}.png")
     saved     = _save_fig(fig, save_path, "latency_trend.png")
     plt.close(fig)
 
@@ -208,6 +203,9 @@ def compute_token_metrics(
 
     plt.tight_layout()
     chart_b64 = _fig_to_base64(fig)
+    if save_path is None:
+        ts_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        save_path = str(_ensure_chart_dir() / f"token_metrics_{ts_str}.png")
     saved     = _save_fig(fig, save_path, "token_metrics.png")
     plt.close(fig)
 
@@ -272,6 +270,9 @@ def compute_error_frequency(
 
     plt.tight_layout()
     chart_b64 = _fig_to_base64(fig)
+    if save_path is None:
+        ts_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        save_path = str(_ensure_chart_dir() / f"error_frequency_{ts_str}.png")
     saved     = _save_fig(fig, save_path, "error_frequency.png")
     plt.close(fig)
 

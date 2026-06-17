@@ -1,22 +1,3 @@
-# analysis_dashboard/src/analysis_dashboard/graph_client.py
-#
-# HLP Graph Knowledge Agent — Stage 3 — Neo4j Aura DB Knowledge Graph Client
-#
-# Graph Schema
-# ─────────────────────────────────────────────────────────
-# Nodes:
-#   (:Session)       — Represents one agent execution session
-#   (:AgentAction)   — A single agent reasoning or final-answer step
-#   (:MCPServerCall) — A tool invocation or resource read on the MCP server
-#
-# Edges (directed, typed):
-#   (:Session)-[:TRIGGERED]->(:AgentAction)
-#   (:AgentAction)-[:ROUTED_TO]->(:MCPServerCall)
-#   (:MCPServerCall)-[:DEPENDS_ON]->(:MCPServerCall)   (sampling chain)
-#   (:AgentAction)-[:DEPENDS_ON]->(:AgentAction)       (iteration chain)
-#
-# All nodes carry a `timestamp` property for temporal ordering.
-
 from __future__ import annotations
 
 import logging

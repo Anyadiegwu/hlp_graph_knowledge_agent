@@ -1,13 +1,3 @@
-# agent_client/src/agent_client/client.py
-#
-# HLP Graph Knowledge Agent — Stage 3
-#
-# Extends Stage 2 with:
-#   • HLPLogStore: LangGraph-style SQLite vector store with hierarchical namespaces
-#   • Every significant agent/MCP event is persisted as a validated LogEntry
-#   • session_id propagated across all log entries in a single run
-#   • Dual-stream logging retained (flat file + structured SQLite)
-
 from __future__ import annotations
 
 import asyncio
@@ -18,12 +8,9 @@ import uuid
 import warnings
 from pathlib import Path
 from typing import Any
-
+from dotenv import find_dotenv
 warnings.filterwarnings("ignore")
 
-from dotenv import find_dotenv, load_dotenv
-
-load_dotenv(find_dotenv(".env"))
 
 from langchain.agents import create_agent
 from langchain.tools import tool

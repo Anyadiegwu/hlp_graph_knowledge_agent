@@ -1,6 +1,3 @@
-
----
-
 # HLP Graph Knowledge Agent — Stage 3: Observability & Diagnostics
 
 Extends the Stage 2 distributed MCP architecture with a full observability stack: structured vector log persistence, a semantic log analysis agent, a Neo4j Aura DB causal knowledge graph, and an interactive Streamlit diagnostic dashboard.
@@ -220,7 +217,6 @@ If you prefer testing inside your terminal rather than via a web browser, use th
 | `mcp_agent_system.log` | Text Log | Flat dual-stream trace capturing client and server exchanges via text tags. |
 | `mcp_agent_log.db` | SQLite DB | Vector repository containing all structured entries coupled with vector embeddings. |
 | `analysis_agent.log` | Text Log | Isolated diagnostics run record generated during dashboard or CLI interaction loops. |
-| `charts/` | Directory | Local asset directory storing analytics visualizations (`.png`) built by the agent. |
 
 ---
 

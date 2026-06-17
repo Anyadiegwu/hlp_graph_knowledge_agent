@@ -1,9 +1,3 @@
-# MCP Server — Stage 3 (HLP Graph Knowledge Agent)
-# Identical to Stage 2 — server holds no LLM, all sampling delegated to client.
-# Exposes:
-#   @tool  reflect_answer  — Critic/Corrector loop via MCP Sampling
-#   @tool  query_knowledge — Hierarchical CRAG with ToT + Tavily fallback
-
 from __future__ import annotations
 
 import asyncio
