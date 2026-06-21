@@ -71,3 +71,15 @@
   query_knowledge: mean=2276.7  median=2277.6  max=2383.9  n=3
   reflect_answer: mean=7510.8  medi
 [2026-06-17 02:06:12] [ANALYSIS_AGENT] [INFO] Analysis query complete. steps=7
+[2026-06-21 16:02:24] [ANALYSIS_AGENT] [INFO] Analysis Agent log: C:\Users\Victor\My Files\Kodecamp\stage3\hlp_graph_knowledge_agent\analysis_agent.log
+[2026-06-21 16:02:39] [ANALYSIS_AGENT] [INFO] Analysis agent built. model=ChatGoogleGenerativeAI tools=7
+[2026-06-21 16:02:39] [ANALYSIS_AGENT] [INFO] Analysis query: Find all sessions from the last 24 hours where the internal CRAG tool failed, and show me a chart of client-side latency
+[2026-06-21 16:02:43] [ANALYSIS_AGENT] [INFO] get_log_statistics called.
+[2026-06-21 16:02:43] [ANALYSIS_AGENT] [INFO] Stats: total=85 sessions=0 errors=0
+[2026-06-21 16:02:46] [ANALYSIS_AGENT] [INFO] semantic_log_search: query='CRAG pipeline failures' k=20
+[2026-06-21 16:02:52] [ANALYSIS_AGENT] [INFO] semantic_log_search returned 20 results.
+[2026-06-21 16:02:55] [ANALYSIS_AGENT] [INFO] latency_trend_chart: window=5 save_path=crag_latency_trend.png
+[2026-06-21 16:03:01] [ANALYSIS_AGENT] [INFO] latency_trend_chart: Latency Summary (ms):
+  query_knowledge: mean=2276.7  median=2277.6  max=2383.9  n=3
+  reflect_answer: mean=7510.8  medi
+[2026-06-21 16:03:06] [ANALYSIS_AGENT] [INFO] Analysis query complete. steps=7

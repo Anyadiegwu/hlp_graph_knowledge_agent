@@ -8,14 +8,16 @@ import uuid
 import warnings
 from pathlib import Path
 from typing import Any
-from dotenv import find_dotenv
+
 warnings.filterwarnings("ignore")
+
+from dotenv import find_dotenv
 
 
 from langchain.agents import create_agent
 from langchain.tools import tool
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage  # AIMessage retained for agent stream handling
 from langchain_mcp_adapters.callbacks import CallbackContext, Callbacks
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from mcp.shared.context import RequestContext
@@ -250,10 +252,11 @@ async def sampling_callback(
         else:
             text = str(msg.content)
         prompt_texts.append(text)
-        if msg.role == "user":
-            lc_messages.append(HumanMessage(content=text))
-        else:
-            lc_messages.append(AIMessage(content=text))
+        # The server has no LLM access and should never generate AIMessage objects.
+        # All sampling requests from the server are single-turn user-role prompts.
+        # If conversation history context were ever needed, it would be injected
+        # here from client-side cache rather than passed across the network.
+        lc_messages.append(HumanMessage(content=text))
 
     _persist(
         interaction_type=MCPInteractionType.SAMPLING_REQUEST,
