@@ -245,13 +245,22 @@ def _expand_queries(query: str) -> list[str]:
 
 
 def _score_against_queries(text: str, keywords: list[str], queries: list[str]) -> float:
-    combined = text.lower()
-    all_terms = set()
+    """
+    Score a KB entry's relevance to the user's queries.
+
+    Combines the KB entry's text and its keywords into one searchable body,
+    then counts how many of the user's query terms appear in that body.
+    This ensures the score reflects genuine query-to-KB relevance rather
+    than self-referential overlap between a chunk and its own keywords.
+    """
+    combined = (text + " " + " ".join(keywords)).lower()
+
+    query_terms = set()
     for q in queries:
-        all_terms.update(w for w in q.lower().split() if len(w) > 2)
-    all_terms.update(kw.lower() for kw in keywords)
-    hits = sum(1 for term in all_terms if term in combined)
-    return hits / max(len(all_terms), 1)
+        query_terms.update(w for w in q.lower().split() if len(w) > 2)
+
+    hits = sum(1 for term in query_terms if term in combined)
+    return hits / max(len(query_terms), 1)
 
 
 def _hierarchical_retrieve(queries: list[str]) -> list[dict[str, Any]]:
@@ -361,13 +370,13 @@ async def query_knowledge(query: str, ctx: Context = None) -> str:
       1. Multi-query expansion   — 3 semantic variants
       2. Hierarchical retrieval  — domain → section → chunk (3 levels)
       3. ToT evaluation          — 3-chain majority vote per chunk
-      4. Tavily fallback         — if ToT accepts < 2 chunks
+      4. Tavily fallback         — if KB relevance score is below threshold
     """
     msg = f"CRAG pipeline started for query: '{query}'"
     logger.info(msg)
     if ctx: await ctx.info(msg)
 
-    queries  = _expand_queries(query)
+    queries = _expand_queries(query)
     msg = f"Expanded queries: {queries}"
     logger.debug(msg)
     if ctx: await ctx.log(level="debug", message=msg)
@@ -387,9 +396,9 @@ async def query_knowledge(query: str, ctx: Context = None) -> str:
     if ctx: await ctx.info(msg)
 
     # Relevance-based fallback trigger:
-    # Fire Tavily if the KB has no genuinely relevant content for this query,
-    # regardless of chunk count. A top score below 0.15 means the KB is
-    # returning marginally-matching chunks, not real answers.
+    # Fire Tavily if the KB has no genuinely relevant content for this query.
+    # A top score below 0.15 means the KB is returning marginally-matching
+    # chunks rather than real answers.
     RELEVANCE_THRESHOLD = 0.15
     top_score = accepted[0]["_score"] if accepted else 0.0
     kb_is_relevant = top_score >= RELEVANCE_THRESHOLD and len(accepted) >= 2
@@ -404,11 +413,9 @@ async def query_knowledge(query: str, ctx: Context = None) -> str:
         if ctx: await ctx.info(msg)
         web = await _tavily_fallback(query)
         if web:
-            # Replace low-relevance KB chunks with web results entirely
             accepted = web
             used_fallback = True
         else:
-            # Tavily unavailable — keep whatever KB returned
             msg = "Tavily fallback returned nothing — using low-relevance KB results."
             logger.warning(msg)
             if ctx: await ctx.log(level="warning", message=msg)
