@@ -1,7 +1,7 @@
 [project]
 name = "agent_client"
-version = "0.2.0"
-description = "LangChain ReAct agent — MCP Client with MCP Sampling, dual-stream logging, and LangGraph SQLite vector log store"
+version = "0.4.0"
+description = "LangChain ReAct agent — MCP Client with RunnableWithRetry, RunnableWithFallbacks, dual-stream logging, and LangGraph SQLite vector log store"
 requires-python = ">=3.11"
 dependencies = [
     "langchain>=0.3.0",
@@ -11,12 +11,13 @@ dependencies = [
     "langchain-ollama>=0.2.0",
     "langchain-mcp-adapters>=0.2.0",
     "langgraph>=0.2.0",
-    "langgraph-checkpoint-sqlite>=2.0.0",  # SqliteStore backend
+    "langgraph-checkpoint-sqlite>=2.0.0",
     "mcp>=1.0.0",
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
     "python-dotenv>=1.0.0",
-    "aiosqlite>=0.19.0",                  # async sqlite support
+    "aiosqlite>=0.19.0",
+    "tenacity>=8.2.0",
 ]
 
 [project.scripts]

@@ -12,12 +12,11 @@ from typing import Any
 warnings.filterwarnings("ignore")
 
 from dotenv import find_dotenv
-
-
 from langchain.agents import create_agent
 from langchain.tools import tool
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, HumanMessage  # AIMessage retained for agent stream handling
+from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.runnables import RunnableConfig, RunnableLambda
 from langchain_mcp_adapters.callbacks import CallbackContext, Callbacks
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from mcp.shared.context import RequestContext
@@ -29,6 +28,7 @@ from mcp.types import (
 )
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from tenacity import wait_exponential
 
 from agent_client.log_store import (
     HLPLogStore,
@@ -38,15 +38,9 @@ from agent_client.log_store import (
     get_log_store,
 )
 
-# ─────────────────────────────────────────────
-# 1. Dual-stream logging (flat file — Stage 2)
-#    Stage 3 ADDS the SQLite vector store on
-#    top of this; the flat log is retained.
-# ─────────────────────────────────────────────
-
-_REPO_ROOT = Path(__file__).resolve().parents[3]
-LOG_FILE   = _REPO_ROOT / "mcp_agent_system.log"
-LOG_FORMAT = "[%(asctime)s] [%(log_source)s] [%(levelname)s] %(message)s"
+_REPO_ROOT  = Path(__file__).resolve().parents[3]
+LOG_FILE    = _REPO_ROOT / "mcp_agent_system.log"
+LOG_FORMAT  = "[%(asctime)s] [%(log_source)s] [%(levelname)s] %(message)s"
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 
@@ -78,24 +72,23 @@ def _make_logger(name: str, source: str) -> logging.Logger:
     return lg
 
 
-client_logger = _make_logger("agent.client",       "CLIENT")
-server_logger = _make_logger("agent.server_relay",  "SERVER")
+client_logger = _make_logger("agent.client",      "CLIENT")
+server_logger = _make_logger("agent.server_relay", "SERVER")
 client_logger.info("Flat log file : %s", LOG_FILE)
 
+MAX_RETRY_ATTEMPTS = 3
 
-# ─────────────────────────────────────────────
-# 2. Settings
-# ─────────────────────────────────────────────
 
 class Settings(BaseSettings):
-    groq_api_key:    SecretStr | None = None
-    groq_model_name: str              = "llama-3.3-70b-versatile"
-    gemini_api_key:  SecretStr | None = None
-    gemini_model_name: str            = "gemini-2.5-flash"
-    model_temperature: float          = 0.0
-    mcp_server_url:  str              = "http://localhost:8000/mcp"
-    use_groq:        bool             = True
-    log_db_path:     str              = ""       # empty → auto-detected at repo root
+    groq_api_key:      SecretStr | None = None
+    groq_model_name:   str              = "llama-3.3-70b-versatile"
+    gemini_api_key:    SecretStr | None = None
+    gemini_model_name: str              = "gemini-2.5-flash"
+    model_temperature: float            = 0.0
+    mcp_server_url:    str              = "http://localhost:8000/mcp"
+    use_groq:          bool             = True
+    log_db_path:       str              = ""
+    ollama_model_name: str              = "llama3.2:3b"
 
     model_config = SettingsConfigDict(
         env_file=find_dotenv(".env"),
@@ -106,15 +99,10 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-# ─────────────────────────────────────────────
-# 3. Stage 3 — SQLite Vector Log Store
-# ─────────────────────────────────────────────
-
-_db_path = settings.log_db_path or (_REPO_ROOT / "mcp_agent_log.db")
+_db_path  = settings.log_db_path or (_REPO_ROOT / "mcp_agent_log.db")
 log_store: HLPLogStore = get_log_store(_db_path)
 client_logger.info("Vector log store: %s", _db_path)
 
-# Each process run = one session
 SESSION_ID = str(uuid.uuid4())
 client_logger.info("Session ID: %s", SESSION_ID)
 
@@ -130,10 +118,6 @@ def _persist(
     metadata: dict[str, Any] | None = None,
     embed: bool = True,
 ) -> None:
-    """
-    Write a validated LogEntry to the SQLite vector store.
-    Non-blocking: failures are logged to flat file but never raise.
-    """
     try:
         entry = LogEntry(
             session_id=SESSION_ID,
@@ -151,14 +135,243 @@ def _persist(
         client_logger.warning("Log store write failed: %s", exc)
 
 
-# ─────────────────────────────────────────────
-# 4. Model builders
-# ─────────────────────────────────────────────
+RESILIENCE_STATE: dict[str, int] = {
+    "fallback_activations":   0,
+    "self_heal_iterations":   0,
+    "absolute_fallback_hits": 0,
+}
+
+
+def _flush_resilience_state() -> None:
+    _persist(
+        interaction_type=MCPInteractionType.SYSTEM_EVENT,
+        content=json.dumps(RESILIENCE_STATE),
+        namespace_path=NS.SYSTEM_STARTUP,
+        component="agent_client",
+        metadata={"event": "resilience_state_flush", **RESILIENCE_STATE},
+        embed=False,
+    )
+
+
+def _build_groq_fallback() -> BaseChatModel | None:
+    if not settings.groq_api_key:
+        return None
+    try:
+        from langchain_groq import ChatGroq
+        return ChatGroq(
+            model=settings.groq_model_name,
+            temperature=settings.model_temperature,
+            api_key=settings.groq_api_key,
+        )
+    except Exception as exc:
+        client_logger.warning("Could not build Groq fallback model: %s", exc)
+        return None
+
+
+class _SelfHealRunnable:
+    def __init__(self, model: BaseChatModel) -> None:
+        self._model = model
+
+    def _extract_query(self, input_data: Any) -> str:
+        if isinstance(input_data, dict):
+            messages = input_data.get("messages", [])
+            if messages:
+                last = messages[-1]
+                return last.content if isinstance(last.content, str) else str(last.content)
+            return str(input_data.get("input", input_data))
+        if isinstance(input_data, str):
+            return input_data
+        return str(input_data)
+
+    async def ainvoke(self, input_data: Any, config: RunnableConfig | None = None) -> dict:
+        RESILIENCE_STATE["fallback_activations"] += 1
+
+        full_error_trace = ""
+        if isinstance(input_data, dict):
+            full_error_trace = str(input_data.get("error_trace", "unknown error"))
+
+        original_query = self._extract_query(input_data)
+
+        client_logger.warning(
+            "\nCRITICAL: Primary Chain failed!\n"
+            "Error Captured: %s\n"
+            "\n--- [STEP 2] Routing to Self-Heal Chain with Error Trace... ---\n",
+            full_error_trace[:300],
+        )
+
+        _persist(
+            interaction_type=MCPInteractionType.ERROR,
+            content=(
+                f"[SELF-HEAL] Primary chain failed. Attempting LLM self-correction.\n"
+                f"error_trace: {full_error_trace}\n"
+                f"original_query: {original_query}"
+            ),
+            namespace_path=NS.AGENT_REASONING,
+            component="agent_client",
+            metadata={
+                "event": "self_heal_activated",
+                "error_trace": full_error_trace,
+                "fallback_activations": RESILIENCE_STATE["fallback_activations"],
+            },
+            embed=False,
+        )
+
+        corrective_prompt = (
+            f"You are a resilient AI assistant. One of your tool calls just failed "
+            f"with the following error traceback:\n\n"
+            f"ERROR:\n{full_error_trace}\n\n"
+            f"Despite this failure, you must still answer the user's original query "
+            f"as helpfully as possible using only your internal knowledge — do NOT "
+            f"attempt to call any tools.\n\n"
+            f"Original query: {original_query}\n\n"
+            f"Provide a complete, honest answer. If you genuinely cannot answer "
+            f"without the failed tool, say so clearly and explain what information "
+            f"would be needed."
+        )
+
+        response_text: str | None = None
+        model_used = type(self._model).__name__
+
+        try:
+            response = await self._model.ainvoke([HumanMessage(content=corrective_prompt)])
+            response_text = (
+                response.content
+                if isinstance(response.content, str)
+                else str(response.content)
+            )
+        except Exception as primary_exc:
+            client_logger.warning(
+                "[SELF-HEAL] Primary model failed (%s) — trying Groq fallback.", primary_exc
+            )
+            groq = _build_groq_fallback()
+            if groq is not None and type(self._model).__name__ != "ChatGroq":
+                try:
+                    response = await groq.ainvoke([HumanMessage(content=corrective_prompt)])
+                    response_text = (
+                        response.content
+                        if isinstance(response.content, str)
+                        else str(response.content)
+                    )
+                    model_used = settings.groq_model_name
+                except Exception as groq_exc:
+                    client_logger.error("[SELF-HEAL] Groq fallback also failed: %s", groq_exc)
+                    raise groq_exc
+            else:
+                raise primary_exc
+
+        RESILIENCE_STATE["self_heal_iterations"] += 1
+        client_logger.info(
+            "\nHEALED: Self-Heal Chain recovered successfully via %s!\n"
+            "Recovery answer: %s\n",
+            model_used,
+            response_text[:300],
+        )
+        _persist(
+            interaction_type=MCPInteractionType.AGENT_FINAL_ANSWER,
+            content=f"[SELF-HEAL RECOVERY] {response_text}",
+            namespace_path=NS.AGENT_FINAL_ANSWER,
+            component="agent_client",
+            metadata={
+                "event": "self_heal_success",
+                "model_used": model_used,
+                "self_heal_iterations": RESILIENCE_STATE["self_heal_iterations"],
+            },
+        )
+        return {"messages": [AIMessage(content=response_text)], "self_healed": True}
+
+
+class _AbsoluteFallbackRunnable:
+    async def ainvoke(self, input_data: Any, config: RunnableConfig | None = None) -> dict:
+        RESILIENCE_STATE["absolute_fallback_hits"] += 1
+
+        full_error_trace = ""
+        if isinstance(input_data, dict):
+            full_error_trace = str(input_data.get("error_trace", "unknown error"))
+
+        client_logger.critical(
+            "[ABSOLUTE FALLBACK] All retries and self-healing exhausted. "
+            "error_trace=%s absolute_fallback_hits=%d",
+            full_error_trace[:300],
+            RESILIENCE_STATE["absolute_fallback_hits"],
+        )
+
+        try:
+            _persist(
+                interaction_type=MCPInteractionType.ERROR,
+                content=(
+                    f"[ABSOLUTE FALLBACK] Catastrophic execution failure.\n"
+                    f"All retries ({MAX_RETRY_ATTEMPTS}) and self-healing chains exhausted.\n"
+                    f"error_trace: {full_error_trace}\n"
+                    f"session_id: {SESSION_ID}\n"
+                    f"resilience_state: {json.dumps(RESILIENCE_STATE)}"
+                ),
+                namespace_path=NS.AGENT_FINAL_ANSWER,
+                component="agent_client",
+                metadata={
+                    "event": "absolute_fallback",
+                    "error_trace": full_error_trace,
+                    "session_id": SESSION_ID,
+                    **RESILIENCE_STATE,
+                },
+                embed=False,
+            )
+        except Exception:
+            pass
+
+        return {
+            "messages": [
+                AIMessage(
+                    content=(
+                        "I'm sorry — I encountered a critical system error and was unable "
+                        "to process your request. All automatic recovery attempts were "
+                        "exhausted. Please try again or contact support if this persists."
+                    )
+                )
+            ],
+            "absolute_fallback": True,
+            "error_trace": full_error_trace,
+            "session_id": SESSION_ID,
+            "resilience_state": dict(RESILIENCE_STATE),
+        }
+
+
+def _build_resilient_chain(runnable: Any, model: BaseChatModel) -> Any:
+    retried = runnable.with_retry(
+        stop_after_attempt=MAX_RETRY_ATTEMPTS,
+        wait_exponential_jitter=True,
+    )
+    client_logger.info(
+        "RunnableWithRetry configured: max_attempts=%d jitter=True",
+        MAX_RETRY_ATTEMPTS,
+    )
+
+    from langchain_groq import ChatGroq
+    healing_model = (
+        ChatGroq(
+            model=settings.groq_model_name,
+            temperature=settings.model_temperature,
+            api_key=settings.groq_api_key,
+        )
+        if settings.groq_api_key
+        else model
+    )
+
+    resilient = retried.with_fallbacks(
+        fallbacks=[
+            RunnableLambda(_SelfHealRunnable(healing_model).ainvoke),
+            RunnableLambda(_AbsoluteFallbackRunnable().ainvoke),
+        ],
+        exception_key="error_trace",
+    )
+    client_logger.info(
+        "RunnableWithFallbacks configured: "
+        "fallbacks=[_SelfHealRunnable, _AbsoluteFallbackRunnable] "
+        "exception_key='error_trace'"
+    )
+    return resilient
+
 
 def _build_primary_model() -> BaseChatModel:
-    # Prefer Gemini for the primary agent loop — Groq has a known issue where
-    # it emits malformed tool-call XML (<function=name{...}>) instead of JSON
-    # when the conversation history grows long, causing a 400 BadRequestError.
     if settings.gemini_api_key:
         try:
             from langchain_google_genai import ChatGoogleGenerativeAI
@@ -173,8 +386,6 @@ def _build_primary_model() -> BaseChatModel:
     if settings.use_groq and settings.groq_api_key:
         try:
             from langchain_groq import ChatGroq
-            # disable_streaming avoids the parallel tool-call path that triggers
-            # the malformed function-call generation on some Groq models.
             return ChatGroq(
                 model=settings.groq_model_name,
                 temperature=settings.model_temperature,
@@ -186,7 +397,7 @@ def _build_primary_model() -> BaseChatModel:
 
     from langchain_ollama import ChatOllama
     client_logger.warning("No cloud API keys — falling back to Ollama.")
-    return ChatOllama(model="llama3.2:3b", temperature=settings.model_temperature)
+    return ChatOllama(model=settings.ollama_model_name, temperature=settings.model_temperature)
 
 
 def _build_sampling_model() -> BaseChatModel:
@@ -217,20 +428,19 @@ sampling_model = _build_sampling_model()
 client_logger.info("Primary model : %s", type(primary_model).__name__)
 client_logger.info("Sampling model: %s", type(sampling_model).__name__)
 
-# ─────────────────────────────────────────────────────────────
-# Log startup event to vector store
-# ─────────────────────────────────────────────────────────────
 _persist(
     interaction_type=MCPInteractionType.SYSTEM_EVENT,
-    content=f"Agent session started. primary_model={type(primary_model).__name__} sampling_model={type(sampling_model).__name__}",
+    content=(
+        f"Agent session started. "
+        f"primary_model={type(primary_model).__name__} "
+        f"sampling_model={type(sampling_model).__name__} "
+        f"max_retry_attempts={MAX_RETRY_ATTEMPTS}"
+    ),
     namespace_path=NS.SYSTEM_STARTUP,
     component="agent_client",
     embed=False,
 )
 
-# ─────────────────────────────────────────────
-# 5. MCP Sampling handler
-# ─────────────────────────────────────────────
 
 async def sampling_callback(
     context: RequestContext,
@@ -239,7 +449,6 @@ async def sampling_callback(
     client_logger.info("MCP Sampling request | max_tokens=%s", params.maxTokens)
     _t0 = time.perf_counter()
 
-    # Persist the incoming sampling request
     prompt_texts = []
     lc_messages  = []
     for msg in params.messages:
@@ -252,10 +461,6 @@ async def sampling_callback(
         else:
             text = str(msg.content)
         prompt_texts.append(text)
-        # The server has no LLM access and should never generate AIMessage objects.
-        # All sampling requests from the server are single-turn user-role prompts.
-        # If conversation history context were ever needed, it would be injected
-        # here from client-side cache rather than passed across the network.
         lc_messages.append(HumanMessage(content=text))
 
     _persist(
@@ -266,7 +471,6 @@ async def sampling_callback(
         metadata={"max_tokens": params.maxTokens},
     )
 
-    # Execute sampling
     response_text = None
     model_used = settings.gemini_model_name if settings.gemini_api_key else settings.groq_model_name
 
@@ -300,7 +504,6 @@ async def sampling_callback(
 
     latency = (time.perf_counter() - _t0) * 1000
 
-    # Persist the sampling response
     _persist(
         interaction_type=MCPInteractionType.SAMPLING_RESPONSE,
         content=response_text or "",
@@ -317,10 +520,6 @@ async def sampling_callback(
         model=model_used,
     )
 
-
-# ─────────────────────────────────────────────
-# 6. MCP callback handlers
-# ─────────────────────────────────────────────
 
 async def log_handler(
     params: LoggingMessageNotificationParams,
@@ -340,8 +539,6 @@ async def log_handler(
         message = str(params.data)
     server_logger.log(level, message)
 
-    # Also persist server logs to the vector store
-    # Determine namespace based on message content
     ns = NS.MCP_SERVER_TOOL
     if "crag" in message.lower() or "retrieval" in message.lower() or "tot" in message.lower():
         ns = NS.MCP_SERVER_CRAG
@@ -358,7 +555,7 @@ async def log_handler(
         content=message,
         namespace_path=ns,
         component="mcp_server",
-        embed=(level >= logging.INFO),   # only embed INFO+ to save API calls
+        embed=(level >= logging.INFO),
     )
 
 
@@ -375,10 +572,6 @@ async def progress_handler(
     else:
         client_logger.info("[PROGRESS%s] step=%.0f — %s", tool_info, progress, message or "")
 
-
-# ─────────────────────────────────────────────
-# 7. MCP Client
-# ─────────────────────────────────────────────
 
 MCP_SERVER_NAME = "ThinkingAgentServer"
 
@@ -418,7 +611,7 @@ async def connect_to_server() -> None:
     _persist(
         interaction_type=MCPInteractionType.SYSTEM_EVENT,
         content=(
-            f"MCP connection established. tools={[t for t in _remote_tools.keys()]} "
+            f"MCP connection established. tools={list(_remote_tools.keys())} "
             f"server_url={settings.mcp_server_url}"
         ),
         namespace_path=NS.MCP_CLIENT_CONNECT,
@@ -434,10 +627,6 @@ async def connect_to_server() -> None:
     except Exception as exc:
         client_logger.warning("Could not set server log level: %s", exc)
 
-
-# ─────────────────────────────────────────────
-# 8. LangChain @tool wrappers
-# ─────────────────────────────────────────────
 
 @tool
 async def reflect_answer_tool(
@@ -525,14 +714,11 @@ async def query_knowledge_tool(query: str) -> str:
     result = await _remote_tools["query_knowledge"].ainvoke({"query": query})
     latency = (time.perf_counter() - _t0) * 1000
 
-    # Fix: result may be a list of content blocks rather than a plain string.
-    # Extract text before passing to _persist() which requires a str.
     if isinstance(result, str):
         result_str = result
     elif isinstance(result, list):
         result_str = " ".join(
-            b.get("text", "") if isinstance(b, dict) else str(b)
-            for b in result
+            b.get("text", "") if isinstance(b, dict) else str(b) for b in result
         )
     else:
         result_str = str(result)
@@ -551,12 +737,71 @@ async def query_knowledge_tool(query: str) -> str:
     return result_str
 
 
-# ─────────────────────────────────────────────
-# 9. Agent construction
-# ─────────────────────────────────────────────
+@tool
+async def simulate_fault_tool(
+    fault_type: str = "random",
+    tool_target: str = "query_knowledge",
+    severity: str = "medium",
+) -> str:
+    """
+    Triggers a controlled fault injection on the MCP server for resilience testing.
+
+    This tool deliberately causes the server to raise a specific error type so
+    that the client's RunnableWithRetry and RunnableWithFallbacks self-healing
+    chains are exercised with realistic failure traces.
+
+    Parameters
+    ----------
+    fault_type  : bad_schema | runtime_error | timeout_sim | partial_payload | random
+    tool_target : The logical tool name to annotate the fault against (for logs).
+    severity    : low | medium | high — controls error intensity and sleep duration.
+
+    Use this tool when:
+    - You want to test that the resilience stack is working end-to-end.
+    - You need to generate fault trace data for the explainability audit report.
+    - You are running a resilience demo.
+    """
+    client_logger.info(
+        "Invoking simulate_fault: fault_type=%s tool_target=%s severity=%s",
+        fault_type, tool_target, severity,
+    )
+    _t0 = time.perf_counter()
+
+    _persist(
+        interaction_type=MCPInteractionType.TOOL_INVOCATION,
+        content=(
+            f"simulate_fault invoked. "
+            f"fault_type={fault_type} tool_target={tool_target} severity={severity}"
+        ),
+        namespace_path=NS.MCP_CLIENT_TOOL_CALL,
+        component="agent_client",
+        tool_name="simulate_fault",
+        metadata={"fault_type": fault_type, "tool_target": tool_target, "severity": severity},
+    )
+
+    if "simulate_fault" not in _remote_tools:
+        return "Error: simulate_fault tool not available on server."
+
+    result = await _remote_tools["simulate_fault"].ainvoke({
+        "fault_type": fault_type,
+        "tool_target": tool_target,
+        "severity": severity,
+    })
+
+    latency = (time.perf_counter() - _t0) * 1000
+    _persist(
+        interaction_type=MCPInteractionType.TOOL_INVOCATION,
+        content=f"simulate_fault returned (unexpectedly): {str(result)[:200]}",
+        namespace_path=NS.MCP_SERVER_TOOL,
+        component="mcp_server",
+        tool_name="simulate_fault",
+        latency_ms=latency,
+    )
+    return str(result)
+
 
 def _build_agent():
-    tools = [reflect_answer_tool, query_knowledge_tool]
+    tools = [reflect_answer_tool, query_knowledge_tool, simulate_fault_tool]
     tool_descriptions = "\n".join(
         f"- {t.name}: {t.description[:120]}" for t in tools
     )
@@ -577,6 +822,9 @@ LangChain, MCP, FastMCP, CRAG, or system design.
 2. **reflect_answer_tool** — ALWAYS call this on your draft answer before giving \
 a Final Answer.
 
+3. **simulate_fault_tool** — Use ONLY when explicitly asked to run a resilience test \
+or fault injection demo. Never use this during normal queries.
+
 ## Workflow
 
 **Technical queries:**
@@ -584,6 +832,9 @@ query_knowledge_tool → draft answer → reflect_answer_tool → Final Answer
 
 **General queries:**
 draft answer → reflect_answer_tool → Final Answer
+
+**Resilience tests:**
+simulate_fault_tool (with appropriate fault_type) → observe recovery → Final Answer
 
 ## ReAct Format (STRICT)
 
@@ -605,10 +856,6 @@ Final Answer: complete, verified response.
     return agent, tools
 
 
-# ─────────────────────────────────────────────
-# 10. Query runner
-# ─────────────────────────────────────────────
-
 async def run_query(agent: Any, user_query: str) -> str:
     client_logger.info("=" * 70)
     client_logger.info("Query: %s", user_query)
@@ -621,50 +868,43 @@ async def run_query(agent: Any, user_query: str) -> str:
         metadata={"query": user_query},
     )
 
-    # Hardcoded pre-fetch: always call query_knowledge_tool before the agent
-    # starts reasoning. This guarantees Tavily fires for off-KB queries
-    # regardless of what the agent decides to do on its own.
-    client_logger.info("Pre-fetching knowledge context for query...")
-    try:
-        kb_context = await query_knowledge_tool.ainvoke({"query": user_query})
-    except Exception as exc:
-        client_logger.warning("Pre-fetch failed: %s", exc)
-        kb_context = ""
-
-    # Inject KB context into the initial message so the agent has it from the start
-    augmented_query = user_query
-    if kb_context and kb_context.strip():
-        augmented_query = (
-            f"{user_query}\n\n"
-            f"[Pre-fetched Knowledge Context]:\n{kb_context}"
-        )
+    resilient_agent = _build_resilient_chain(agent, primary_model)
 
     final_response = ""
     _t0 = time.perf_counter()
 
-    async for event in agent.astream({"messages": [HumanMessage(content=augmented_query)]}):
-        if "model" in event:
-            for msg in event["model"].get("messages", []):
-                if isinstance(msg, AIMessage):
-                    # msg.content may be a list of content blocks (Gemini) or a plain string
-                    if isinstance(msg.content, list):
-                        content_str = " ".join(
-                            b.get("text", "") if isinstance(b, dict) else str(b)
-                            for b in msg.content
-                        )
-                    else:
-                        content_str = msg.content or ""
+    try:
+        result = await resilient_agent.ainvoke(
+            {"messages": [HumanMessage(content=user_query)]}
+        )
 
-                    if content_str.strip() and msg.tool_calls:
-                        _persist(
-                            interaction_type=MCPInteractionType.AGENT_REASONING,
-                            content=content_str[:1000],
-                            namespace_path=NS.AGENT_REASONING,
-                            component="agent_client",
-                            embed=False,
+        if isinstance(result, dict) and "absolute_fallback" in result:
+            final_response = result["messages"][0].content
+            client_logger.critical("[ABSOLUTE FALLBACK RESPONSE] %s", final_response)
+        elif isinstance(result, dict) and result.get("self_healed"):
+            final_response = result["messages"][-1].content
+            client_logger.warning("[SELF-HEAL RESPONSE] %s", final_response[:200])
+        else:
+            messages = result.get("messages", []) if isinstance(result, dict) else []
+            for msg in reversed(messages):
+                if isinstance(msg, AIMessage):
+                    if isinstance(msg.content, list):
+                        content = " ".join(
+                            block.get("text", "") if isinstance(block, dict) else str(block)
+                            for block in msg.content
                         )
-                    elif content_str.strip() and not msg.tool_calls:
-                        final_response = content_str
+                    elif isinstance(msg.content, str):
+                        content = msg.content
+                    else:
+                        content = str(msg.content)
+
+                    if content.strip() and not msg.tool_calls:
+                        final_response = content
+                        break
+
+    except Exception as exc:
+        client_logger.critical("Unhandled exception escaped resilient chain: %s", exc)
+        final_response = f"Critical error: {exc}"
 
     latency = (time.perf_counter() - _t0) * 1000
 
@@ -674,8 +914,14 @@ async def run_query(agent: Any, user_query: str) -> str:
         namespace_path=NS.AGENT_FINAL_ANSWER,
         component="agent_client",
         latency_ms=latency,
-        metadata={"query": user_query, "response_length": len(final_response)},
+        metadata={
+            "query": user_query,
+            "response_length": len(final_response),
+            **RESILIENCE_STATE,
+        },
     )
+
+    _flush_resilience_state()
 
     client_logger.info("Answer:\n%s", final_response)
     client_logger.info("=" * 70)
@@ -683,9 +929,77 @@ async def run_query(agent: Any, user_query: str) -> str:
     return final_response
 
 
-# ─────────────────────────────────────────────
-# 11. Entry point
-# ─────────────────────────────────────────────
+async def run_resilience_test() -> None:
+    client_logger.info("=" * 70)
+    client_logger.info("\n--- [RESILIENCE TEST] Sending fault to primary chain... ---\n")
+
+    async def _fault_call(_: dict) -> dict:
+        if "simulate_fault" not in _remote_tools:
+            raise RuntimeError("simulate_fault tool not registered.")
+        try:
+            await _remote_tools["simulate_fault"].ainvoke({
+                "fault_type": "runtime_error",
+                "tool_target": "query_knowledge",
+                "severity":    "medium",
+            })
+        except Exception as exc:
+            raise RuntimeError(
+                f"Simulated fault propagated to resilient chain: {exc}"
+            ) from exc
+        raise RuntimeError(
+            "Simulated execution failure in 'query_knowledge': "
+            "downstream dependency returned HTTP 503. Retry budget may be available."
+        )
+
+    fault_runnable  = RunnableLambda(_fault_call)
+    resilient_fault = _build_resilient_chain(fault_runnable, primary_model)
+
+    _persist(
+        interaction_type=MCPInteractionType.TOOL_INVOCATION,
+        content="Resilience test started: direct fault injection bypassing agent loop.",
+        namespace_path=NS.MCP_CLIENT_TOOL_CALL,
+        component="agent_client",
+        tool_name="simulate_fault",
+        metadata={"test": "resilience_demo", "fault_type": "runtime_error"},
+        embed=False,
+    )
+
+    try:
+        result = await resilient_fault.ainvoke(
+            {"messages": [HumanMessage(content="resilience test input")]}
+        )
+
+        if result.get("absolute_fallback"):
+            client_logger.critical(
+                "\nCRITICAL: Primary chain failed AND self-heal failed!\n"
+                "Error Captured: %s\n"
+                "\n--- [ABSOLUTE FALLBACK] Hardcoded safe response returned. ---\n"
+                "absolute_fallback_hits=%d",
+                result.get("error_trace", "")[:300],
+                RESILIENCE_STATE["absolute_fallback_hits"],
+            )
+        elif result.get("self_healed"):
+            client_logger.info(
+                "\nHEALED: Self-Heal Chain recovered successfully!\n"
+                "Recovery answer: %s\n"
+                "\n--- [RESILIENCE TEST COMPLETE] self_heal_iterations=%d ---\n",
+                result["messages"][-1].content[:300],
+                RESILIENCE_STATE["self_heal_iterations"],
+            )
+
+    except Exception as exc:
+        client_logger.error("[RESILIENCE TEST] Unhandled exception: %s", exc)
+
+    _flush_resilience_state()
+    client_logger.info(
+        "Resilience summary: fallback_activations=%d "
+        "self_heal_iterations=%d absolute_fallback_hits=%d",
+        RESILIENCE_STATE["fallback_activations"],
+        RESILIENCE_STATE["self_heal_iterations"],
+        RESILIENCE_STATE["absolute_fallback_hits"],
+    )
+    client_logger.info("=" * 70)
+
 
 async def _async_main() -> None:
     await connect_to_server()
@@ -694,20 +1008,32 @@ async def _async_main() -> None:
     queries = [
         "What is MCP Sampling and how does it work?",
         "How should I design a LangChain agent that uses MCP tools?",
+        "What are the LangChain resilience primitives for building fault-tolerant chains?",
     ]
 
     for query in queries:
         await run_query(agent, query)
 
-    # Log shutdown
+    await run_resilience_test()
+
     stats = log_store.get_stats()
     client_logger.info(
         "Session complete. Log store stats: total_entries=%d sessions=%d",
         stats["total_entries"], stats["total_sessions"],
     )
+    client_logger.info(
+        "Resilience summary: fallback_activations=%d self_heal_iterations=%d "
+        "absolute_fallback_hits=%d",
+        RESILIENCE_STATE["fallback_activations"],
+        RESILIENCE_STATE["self_heal_iterations"],
+        RESILIENCE_STATE["absolute_fallback_hits"],
+    )
     _persist(
         interaction_type=MCPInteractionType.SYSTEM_EVENT,
-        content=f"Agent session ended. total_entries={stats['total_entries']}",
+        content=(
+            f"Agent session ended. total_entries={stats['total_entries']} "
+            f"resilience_state={json.dumps(RESILIENCE_STATE)}"
+        ),
         namespace_path=NS.SYSTEM_SHUTDOWN,
         component="agent_client",
         embed=False,

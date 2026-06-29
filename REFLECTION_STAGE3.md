@@ -1,23 +1,83 @@
-# REFLECTION_STAGE3.md
+# REFLECTION_STAGE4.md — HLP Graph Knowledge Agent
 
-## The Structural Evolution of Observability
+## 1. Deterministic vs. Edgeless Graph Orchestration
 
-Switching from a flat `.log` file to a vector-embedded, hierarchically-namespaced `HLPLogStore` changes observability from passive record-keeping into an active, queryable intelligence layer. With flat text logs, anomaly detection is purely pattern-based — grep, regex, or line-by-line scanning. The analyst must already know what they are looking for. With vector-embedded namespaced storage, the store can answer semantic questions like "find all logs where the CRAG pipeline behaved unexpectedly" without requiring the caller to know exact error strings or namespaces in advance.
+Traditional LangGraph topologies use `builder.add_edge()` to declare every
+transition at compile time. The graph structure is fixed, fully inspectable,
+and trivially visualisable — you can call `graph.get_graph().draw_mermaid()` and
+see every possible path before a single token is generated. Testing is
+straightforward: you know exactly which nodes will run for a given input because
+the routing is structural, not behavioural.
 
-The hierarchical namespace tuples (`logs.mcp.server.tools.crag_pipeline`, `logs.agent.planning.reflexive_loop`) add a second dimension: structural locality. Related events are co-located by design, so listing a namespace subtree gives a coherent trace of one component's activity rather than a chronologically interleaved dump from all components simultaneously. This makes automated anomaly detection far more tractable — a drift in embedding space within a specific namespace is a signal, not noise from an unrelated component.
+Discarding explicit edges in favour of `Command(goto=...)` objects shifts routing
+responsibility into the nodes themselves. Each node reads the current state,
+applies its own logic, and decides dynamically where execution goes next. This
+produces genuinely adaptive pipelines — the same compiled graph can execute
+`initial_ingest → stats → xai → chart → synthesize` for an audit query and
+`initial_ingest → stats → synthesize` for a simple statistics question, without
+any conditional branching defined outside the nodes.
 
-The main trade-off is cost and latency at write time. Every log entry that passes through the embedding model adds an API call and roughly 100–300ms of latency. In a high-throughput system this must be throttled, batched, or reserved for semantically rich entries only (INFO and above), with low-level DEBUG entries stored without embeddings.
+The operational hazards are real. Without hardcoded edges, static analysis tools
+cannot enumerate all possible execution paths. A bug in a node's routing logic —
+returning a `goto` that names a non-existent node, or entering a cycle — fails
+at runtime rather than at compile time. Debugging requires reading the
+`routing_log` field we append to state at every hop, since there is no structural
+diagram to fall back on. Visualisation must be reconstructed from execution traces
+rather than graph metadata. For production systems, this demands rigorous node-level
+unit tests that assert not just output values but also the `goto` destination
+returned under each branch condition.
 
-## Graph-Relational Knowledge Mapping
+---
 
-A property graph like Neo4j is uniquely suited to multi-agent interaction traces because the interesting questions are about relationships, not about individual records. "Which agent action triggered this MCP server call, and did that call depend on a sampling round-trip back to the client?" is a graph traversal — a chain of `[:TRIGGERED] → [:ROUTED_TO] → [:DEPENDS_ON]` edges — that would require several self-joins and a complex recursive CTE in a relational SQL schema. In a graph, it is a single three-hop Cypher path query.
+## 2. The Reality of Black-Box XAI in Language Models
 
-Relational tables are optimised for row-level retrieval and aggregate counts. Flat document stores (MongoDB, Elasticsearch) are optimised for field lookups within a document boundary. Neither naturally represents the directed, typed causal chains that multi-agent systems produce: Session → AgentAction → MCPServerCall → SamplingRequest → SamplingResponse → corrected MCPServerCall. Neo4j's property graph model stores this as first-class structure — each hop is an edge with a type and optional properties — making temporal causal analysis, cycle detection, and fan-out measurement natural operations rather than engineering challenges.
+LIME and SHAP were designed for models with stable, differentiable output
+distributions — classifiers that return a probability vector you can measure
+before and after perturbation. LLMs do not expose raw token probabilities through
+standard API calls, and their outputs are non-deterministic: the same masked input
+may produce a different response on two consecutive invocations due to temperature
+sampling.
 
-## Data Type Handling in AI Pipelines
+This forces proxy implementations. Our proxy LIME measures cosine similarity
+between TF-IDF vectors of original and masked log text rather than a true
+confidence drop. Our proxy SHAP computes Shapley values over an anomaly score
+derived from z-score distance rather than a model decision boundary. Both
+approximations are post-hoc and indirect — they explain the log data's internal
+structure, not the LLM's generative process.
 
-Parsing unstructured logs into structured schemas across decoupled agent boundaries exposed a subtle but impactful class of bugs: integer dictionary keys silently becoming strings at every JSON boundary. Python's `json.dumps()` converts `{0: "value", 1: "other"}` to `{"0": "value", "1": "other"}`. When that payload is read back in another process and code downstream expects integer keys — for example, a model configuration map where layer indices are integers — a `KeyError` or silent wrong-key lookup follows.
+The reliability of these estimates is bounded by how well TF-IDF similarity
+proxies semantic confidence. For structured error logs with consistent vocabulary,
+the proxy is reasonable. For free-form reasoning traces where token order and
+context carry most of the meaning, masking tokens independently violates the
+independence assumption that both LIME and SHAP rely on. Results should be
+treated as directional signals — "latency_ms was the strongest numeric driver of
+anomalous behaviour in this session" — rather than precise causal claims.
 
-The `cast_integer_keys` field validator in `LogEntry` addresses this at the schema boundary: any key that is a digit string is cast back to `int` before the entry is stored, and the inverse cast (`str(k)`) is applied on serialisation. This guarantees that the in-memory representation is always consistent regardless of how many JSON round-trips the data has made.
+---
 
-More broadly, strict Pydantic validation at every inter-process boundary — the `LogEntry` schema, the `MCPInteractionType` enum, the `LogEntry.to_store_value()` serialiser — means type errors surface immediately as validation exceptions at the point of creation, not silently downstream as wrong query results or Neo4j property type mismatches. In a distributed AI pipeline where data crosses process boundaries dozens of times per query, this discipline is not optional: it is the primary defence against context drift and silent data corruption.
+## 3. Static Fallbacks vs. Dynamic Context Self-Healing
+
+`RunnableWithFallbacks` is deterministic and cheap. The fallback chain is defined
+at construction time; when the primary runnable fails, LangChain routes to the
+next entry in the list with zero additional LLM calls until `_SelfHealRunnable`
+fires. Latency overhead is bounded and predictable. The cost is inflexibility —
+a static fallback cannot adapt its recovery strategy based on the nature of the
+failure.
+
+Dynamic LLM self-healing (`_SelfHealRunnable`) injects the caught error trace
+into a corrective prompt and asks the model to reason about recovery. This can
+handle novel failure modes that no static handler anticipated, producing responses
+that are contextually appropriate rather than generic. The cost is significant:
+each self-heal attempt consumes one full LLM call at normal token cost, adds
+unpredictable latency, and introduces a new failure surface — the self-heal
+itself can fail if the model misreads the error context.
+
+In a production multi-agent system the correct architecture layers both. Use
+`RunnableWithRetry` for transient infrastructure faults that are statistically
+likely to resolve on retry (network blips, rate limits). Use static
+`RunnableWithFallbacks` for known application-level error types where the
+recovery action is well-defined and cheap. Reserve LLM self-healing for the
+residual category of unexpected semantic failures where no static handler
+applies — and always append a hardcoded absolute fallback as the final safety
+net to guarantee the system never crashes unhandled regardless of what the
+self-healing LLM does.

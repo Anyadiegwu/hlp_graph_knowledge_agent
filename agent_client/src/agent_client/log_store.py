@@ -1,17 +1,3 @@
-# agent_client/src/agent_client/log_store.py
-#
-# HLP Graph Knowledge Agent — Stage 3 — Embedded Vector Log Store
-#
-# Wraps LangGraph's SqliteStore (synchronous) with:
-#   • Hierarchical dot-separated namespace tuples
-#   • Embedding model integration for semantic vector indexing
-#   • Strict Pydantic schema: session_id, mcp_interaction_type, content
-#   • Integer-key casting guardrail for JSON serialisation safety
-#   • Thread-safe write path for use inside async agent loops
-#
-# All logs are ALSO still written to agent_system.log (flat file) from client.py.
-# This store is the ADDITIONAL structured persistence layer required by Stage 3.
-
 from __future__ import annotations
 
 import json
@@ -28,10 +14,6 @@ from typing import Any, Optional
 from pydantic import BaseModel, Field, field_validator
 
 logger = logging.getLogger("agent.log_store")
-
-# ─────────────────────────────────────────────────────────────
-# 1. Schema
-# ─────────────────────────────────────────────────────────────
 
 class MCPInteractionType(str, Enum):
     """Explicitly typed MCP interaction classification."""
@@ -91,10 +73,10 @@ class LogEntry(BaseModel):
         repaired: dict[str, Any] = {}
         for key, val in v.items():
             try:
-                repaired[int(key)] = val  # type: ignore[assignment]
+                repaired[int(key)] = val
             except (ValueError, TypeError):
                 repaired[key] = val
-        return repaired  # type: ignore[return-value]
+        return repaired 
 
     def namespace_tuple(self) -> tuple[str, ...]:
         """Convert dot-separated path to tuple for LangGraph store API."""
@@ -122,11 +104,6 @@ class LogEntry(BaseModel):
         }
 
 
-# ─────────────────────────────────────────────────────────────
-# 2. Namespace helpers
-#    Predefined hierarchical namespaces — Stage 3 requirement.
-# ─────────────────────────────────────────────────────────────
-
 class NS:
     """Canonical namespace path constants."""
     # Agent-side namespaces
@@ -151,20 +128,13 @@ class NS:
     SYSTEM_SHUTDOWN       = "logs.system.shutdown"
 
 
-# ─────────────────────────────────────────────────────────────
-# 3. Embedding helper
-#    Wraps Google Gemini embeddings with a simple fallback to
-#    a zero-vector stub when no API key is available, so the
-#    store can still be used without embedding credentials.
-# ─────────────────────────────────────────────────────────────
-
 class _EmbeddingProvider:
     """Lazy-loaded embedding provider with Gemini → stub fallback."""
 
     def __init__(self) -> None:
         self._model: Any = None
         self._stub: bool = False
-        self._dim: int = 768  # gemini-embedding-001 dimensionality
+        self._dim: int = 768 
 
     def _load(self) -> None:
         if self._model is not None or self._stub:
@@ -205,23 +175,6 @@ class _EmbeddingProvider:
 
 
 _embedder = _EmbeddingProvider()
-
-
-# ─────────────────────────────────────────────────────────────
-# 4. SQLite Vector Log Store
-#
-#    Implements the Stage 3 requirement using raw SQLite with
-#    a custom schema that mirrors the LangGraph store tuple
-#    API (namespace, key, value, embedding) while remaining
-#    installable without the full langgraph-checkpoint-sqlite
-#    binary wheels in all environments.
-#
-#    The store exposes:
-#      • put(entry)        — write a LogEntry
-#      • search(query, k)  — semantic similarity search
-#      • list_namespace(ns)— list all entries under a namespace
-#      • get_all()         — dump all entries (for analysis agent)
-# ─────────────────────────────────────────────────────────────
 
 class HLPLogStore:
     """
@@ -293,8 +246,6 @@ class HLPLogStore:
             conn.executescript(self._CREATE_TABLE)
             conn.commit()
 
-    # ── Write ──────────────────────────────────────────────────
-
     def put(self, entry: LogEntry, embed: bool = True) -> None:
         """
         Persist a LogEntry to the store.
@@ -342,8 +293,6 @@ class HLPLogStore:
                 ),
             )
             conn.commit()
-
-    # ── Semantic Search ────────────────────────────────────────
 
     def search(
         self,
@@ -422,8 +371,6 @@ class HLPLogStore:
         if norm_a == 0 or norm_b == 0:
             return 0.0
         return dot / (norm_a * norm_b)
-
-    # ── Listing & Retrieval ────────────────────────────────────
 
     def list_namespace(self, namespace_prefix: str) -> list[dict[str, Any]]:
         """Return all entries under a namespace prefix, ordered by timestamp."""
@@ -511,10 +458,6 @@ class HLPLogStore:
                 self._conn = None
 
 
-# ─────────────────────────────────────────────────────────────
-# 5. Convenience factory — singleton used by client.py
-# ─────────────────────────────────────────────────────────────
-
 _store_instance: HLPLogStore | None = None
 
 
@@ -523,7 +466,6 @@ def get_log_store(db_path: str | Path | None = None) -> HLPLogStore:
     global _store_instance
     if _store_instance is None:
         if db_path is None:
-            # Default: repo root / mcp_agent_log.db
             _repo_root = Path(__file__).resolve().parents[3]
             db_path = _repo_root / "mcp_agent_log.db"
         _store_instance = HLPLogStore(db_path)

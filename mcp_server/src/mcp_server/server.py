@@ -4,12 +4,14 @@ import asyncio
 import json
 import logging
 import os
+import random
 from typing import Any
 
 from fastmcp import Context, FastMCP
 from langchain_tavily import TavilySearch
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse
+from pydantic import BaseModel, Field
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -21,8 +23,9 @@ logger = logging.getLogger(__name__)
 mcp = FastMCP(
     "ThinkingAgentServer",
     instructions=(
-        "Production MCP server exposing a Sampling-based Reflection tool "
-        "and a Hierarchical CRAG knowledge tool."
+        "Production MCP server exposing a Sampling-based Reflection tool, "
+        "A Hierarchical CRAG knowledge tool, and a fault-injection tool for "
+        "Resilience Testing."
     ),
 )
 
@@ -62,6 +65,34 @@ KNOWLEDGE_BASE: dict[str, dict[str, Any]] = {
                             "The @tool decorator from langchain.tools creates StructuredTool instances."
                         ),
                         "keywords": ["bind_tools", "tool", "decorator", "structured_tool", "args_schema"],
+                    },
+                ],
+            },
+            "resilience": {
+                "summary": "LangChain resilience primitives: RunnableWithRetry and RunnableWithFallbacks.",
+                "keywords": ["retry", "fallback", "resilience", "runnable", "fault", "recovery"],
+                "chunks": [
+                    {
+                        "id": "lc-r-001",
+                        "title": "RunnableWithRetry",
+                        "content": (
+                            "RunnableWithRetry wraps any Runnable with automatic retry logic. "
+                            "Configure max_attempt_number, wait_exponential_jitter=True for "
+                            "exponential backoff with jitter. Handles transient network faults, "
+                            "HTTP 429 rate limits, and socket drops before bubbling the exception."
+                        ),
+                        "keywords": ["retry", "runnable_with_retry", "exponential", "jitter", "backoff", "429"],
+                    },
+                    {
+                        "id": "lc-r-002",
+                        "title": "RunnableWithFallbacks",
+                        "content": (
+                            "RunnableWithFallbacks chains a primary runnable with one or more "
+                            "fallback runnables. The exception_key argument injects the caught "
+                            "exception string into the next runnable's input. A final hardcoded "
+                            "fallback ensures the system never crashes unhandled."
+                        ),
+                        "keywords": ["fallback", "runnable_with_fallbacks", "exception_key", "chain", "self_heal"],
                     },
                 ],
             },
@@ -232,6 +263,93 @@ KNOWLEDGE_BASE: dict[str, dict[str, Any]] = {
     },
 }
 
+class CriticResponse(BaseModel):
+    has_issues: bool = Field(
+        description="True if the draft answer fails any constraints or fails to fully answer the query."
+    )
+    issues: list[str] = Field(
+        default=[],
+        description="List of specific, actionable issues identified. Empty if has_issues is False."
+    )
+
+class CorrectorResponse(BaseModel):
+    corrected_answer: str = Field(
+        description="The full, revised answer incorporating all requested fixes without introducing unsupported claims."
+    )
+    changes_made: list[str] = Field(
+        description="A brief log of the specific changes made during this iteration."
+    )
+
+def _handle_bad_schema(target: str) -> str:
+    return json.dumps({
+        "tool_target": target,
+        "fault_injected": True,
+        "error_hint": "missing required fields: content, session_id",
+        "latency_ms": "not-a-number",
+    })
+
+def _handle_partial_payload(target: str) -> str:
+    return json.dumps({
+        "session_id": 12345,             
+        "mcp_interaction_type": None,   
+        "content": ["not", "a", "string"],
+        "latency_ms": "fast",              
+        "tool_target": target,
+        "fault_injected": True,
+    })
+
+def _handle_runtime_error(target: str) -> None:
+    raise RuntimeError(
+        f"Simulated execution failure in '{target}': "
+        f"downstream dependency returned HTTP 503. "
+        f"Retry budget may be available."
+    )
+
+def _handle_timeout(target: str) -> None:
+    raise TimeoutError(
+        f"Simulated timeout in '{target}'. "
+        f"Network latency exceeded acceptable threshold."
+    )
+
+FAULT_HANDLERS = {
+    "bad_schema": {"type": "payload", "func": _handle_bad_schema},
+    "partial_payload": {"type": "payload", "func": _handle_partial_payload},
+    "runtime_error": {"type": "exception", "func": _handle_runtime_error},
+    "timeout_sim": {"type": "exception", "func": _handle_timeout},
+}
+
+@mcp.tool()
+async def simulate_fault(
+    fault_type: str = "random",
+    tool_target: str = "query_knowledge",
+    severity: str = "medium",
+    ctx: Context = None,
+) -> str:
+    resolved = fault_type if fault_type != "random" else random.choice(list(FAULT_HANDLERS.keys()))
+    
+    if resolved not in FAULT_HANDLERS:
+        warn_msg = f"[FAULT SIMULATION ANOMALY] Received unmapped fault type '{resolved}'. Defaulting to 'runtime_error'."
+        logger.warning(warn_msg)
+        if ctx: await ctx.log(level="warning", message=warn_msg)
+        resolved = "runtime_error"
+
+    severity_map = {"low": 2, "medium": 6, "high": 16}
+    sleep_secs = severity_map.get(severity, 6)
+
+    msg = f"[FAULT INJECTION] tool_target={tool_target} fault_type={resolved} severity={severity}"
+    logger.warning(msg)
+    if ctx: await ctx.log(level="warning", message=msg)
+
+    handler_cfg = FAULT_HANDLERS[resolved]
+    handler_func = handler_cfg["func"]
+
+    if resolved == "timeout_sim":
+        await asyncio.sleep(sleep_secs)
+
+    if handler_cfg["type"] == "payload":
+        return handler_func(tool_target)
+    else:
+        handler_func(tool_target)
 
 def _expand_queries(query: str) -> list[str]:
     q = query.strip()
@@ -243,25 +361,13 @@ def _expand_queries(query: str) -> list[str]:
     variants.append(f"How does {q.lower().rstrip('?')} work in practice?")
     return variants[:3]
 
-
 def _score_against_queries(text: str, keywords: list[str], queries: list[str]) -> float:
-    """
-    Score a KB entry's relevance to the user's queries.
-
-    Combines the KB entry's text and its keywords into one searchable body,
-    then counts how many of the user's query terms appear in that body.
-    This ensures the score reflects genuine query-to-KB relevance rather
-    than self-referential overlap between a chunk and its own keywords.
-    """
     combined = (text + " " + " ".join(keywords)).lower()
-
     query_terms = set()
     for q in queries:
         query_terms.update(w for w in q.lower().split() if len(w) > 2)
-
     hits = sum(1 for term in query_terms if term in combined)
     return hits / max(len(query_terms), 1)
-
 
 def _hierarchical_retrieve(queries: list[str]) -> list[dict[str, Any]]:
     DOMAIN_THRESHOLD  = 0.05
@@ -297,14 +403,12 @@ def _hierarchical_retrieve(queries: list[str]) -> list[dict[str, Any]]:
     logger.info("Hierarchical retrieval yielded %d leaf candidates.", len(leaf_candidates))
     return leaf_candidates
 
-
-def _tot_evaluate(
-    chunks: list[dict[str, Any]], queries: list[str], ctx_log: list[str]
-) -> list[dict[str, Any]]:
+def _tot_evaluate(chunks: list[dict[str, Any]], queries: list[str]) -> list[dict[str, Any]]:
     accepted = []
+    query_terms = set(w for q in queries for w in q.lower().split() if len(w) > 3)
+
     for chunk in chunks:
         content_lower = (chunk.get("content", "") + " " + chunk.get("title", "")).lower()
-        query_terms = set(w for q in queries for w in q.lower().split() if len(w) > 3)
 
         overlap = sum(1 for t in query_terms if t in content_lower)
         vote_a  = overlap >= max(1, len(query_terms) * 0.15)
@@ -314,18 +418,18 @@ def _tot_evaluate(
 
         votes   = sum([vote_a, vote_b, vote_c])
         verdict = "ACCEPT" if votes >= 2 else "REJECT"
-        log_msg = (
+        
+        # CHANGED: Log directly to the standard server logger right where it happens!
+        logger.debug(
             f"ToT chunk '{chunk['id']}' [{chunk['_domain']}/{chunk['_section']}]: "
             f"A={vote_a} B={vote_b} C={vote_c} → {votes}/3 → {verdict}"
         )
-        logger.debug(log_msg)
-        ctx_log.append(log_msg)
+        
         if votes >= 2:
             accepted.append(chunk)
 
     logger.info("ToT accepted %d/%d chunks.", len(accepted), len(chunks))
     return accepted
-
 
 async def _tavily_fallback(query: str) -> list[dict[str, Any]]:
     if not _tavily_key or _tavily is None:
@@ -336,10 +440,10 @@ async def _tavily_fallback(query: str) -> list[dict[str, Any]]:
         if isinstance(results, list):
             return [
                 {
-                    "id":       f"web-{i}",
-                    "title":    r.get("title", "Web Result"),
-                    "content":  r.get("content", r.get("snippet", "")),
-                    "url":      r.get("url", ""),
+                    document_id: f"web-{i}",
+                    "title":  r.get("title", "Web Result"),
+                    "content": r.get("content", r.get("snippet", "")),
+                    "url":     r.get("url", ""),
                     "_domain":  "web",
                     "_section": "web",
                     "_score":   r.get("score", 0.5),
@@ -352,7 +456,6 @@ async def _tavily_fallback(query: str) -> list[dict[str, Any]]:
         logger.error("Tavily fallback error: %s", exc)
         return []
 
-
 @mcp.resource("knowledge://domain/docs")
 async def domain_knowledge_resource() -> str:
     lines = ["Available knowledge domains:\n"]
@@ -362,16 +465,8 @@ async def domain_knowledge_resource() -> str:
             lines.append(f"    └─ {sec_name}: {sec['summary']}")
     return "\n".join(lines)
 
-
 @mcp.tool()
 async def query_knowledge(query: str, ctx: Context = None) -> str:
-    """
-    Hierarchical CRAG retrieval pipeline:
-      1. Multi-query expansion   — 3 semantic variants
-      2. Hierarchical retrieval  — domain → section → chunk (3 levels)
-      3. ToT evaluation          — 3-chain majority vote per chunk
-      4. Tavily fallback         — if KB relevance score is below threshold
-    """
     msg = f"CRAG pipeline started for query: '{query}'"
     logger.info(msg)
     if ctx: await ctx.info(msg)
@@ -395,20 +490,13 @@ async def query_knowledge(query: str, ctx: Context = None) -> str:
     logger.info(msg)
     if ctx: await ctx.info(msg)
 
-    # Relevance-based fallback trigger:
-    # Fire Tavily if the KB has no genuinely relevant content for this query.
-    # A top score below 0.15 means the KB is returning marginally-matching
-    # chunks rather than real answers.
     RELEVANCE_THRESHOLD = 0.15
     top_score = accepted[0]["_score"] if accepted else 0.0
-    kb_is_relevant = top_score >= RELEVANCE_THRESHOLD and len(accepted) >= 2
+    kb_is_relevant = top_score >= RELEVANCE_THRESHOLD and len(accepted) >= 1
 
     used_fallback = False
     if not kb_is_relevant:
-        msg = (
-            f"KB relevance too low (top_score={top_score:.3f}, threshold={RELEVANCE_THRESHOLD}) "
-            f"— triggering Tavily fallback."
-        )
+        msg = f"KB relevance too low (top_score={top_score:.3f}, threshold={RELEVANCE_THRESHOLD}) — triggering Tavily fallback."
         logger.info(msg)
         if ctx: await ctx.info(msg)
         web = await _tavily_fallback(query)
@@ -431,22 +519,24 @@ async def query_knowledge(query: str, ctx: Context = None) -> str:
         + (f"\nSource: {c['url']}" if c.get("url") else "")
         for c in top_chunks
     )
-    fallback_note = (
-        "\n\n> Note: Internal KB was insufficient; web results included." if used_fallback else ""
-    )
-    result = (
-        f"## Query\n{query}\n\n"
-        f"## Expanded Queries\n" + "\n".join(f"- {q}" for q in queries) + "\n\n"
-        f"## Domain Summaries\n{summaries}\n\n"
-        f"## Retrieved Chunks ({len(top_chunks)})\n\n{chunks_text}"
-        f"{fallback_note}"
-    )
+    fallback_note = "\n\n> Note: Internal KB was insufficient; web results included." if used_fallback else ""
+    result = f"""## Query
+        {query}
+
+        ## Expanded Queries
+        {"\n".join(f"- {q}" for q in queries)}
+
+        ## Domain Summaries
+        {summaries}
+
+        ## Retrieved Chunks ({len(top_chunks)}):
+
+        {chunks_text}{fallback_note}
+    """
     if ctx: await ctx.info(f"CRAG returning {len(top_chunks)} chunks for '{query}'.")
     return result
 
-
 MAX_REFLECTION_ITERATIONS = 3
-
 
 @mcp.tool()
 async def reflect_answer(
@@ -455,11 +545,6 @@ async def reflect_answer(
     constraints: str = "accuracy, completeness, no hallucinations",
     ctx: Context = None,
 ) -> str:
-    """
-    Iteratively critiques and corrects a draft answer via MCP Sampling.
-    The server sends Critic and Corrector prompts to the client via ctx.sample().
-    The client executes them with its local LLM. Server holds NO API keys.
-    """
     if ctx is None:
         return "Error: Context not available."
 
@@ -468,6 +553,8 @@ async def reflect_answer(
     await ctx.info(msg)
 
     current_draft = draft_answer
+    critic_schema = json.dumps(CriticResponse.model_json_schema(), indent=2)
+    corrector_schema = json.dumps(CorrectorResponse.model_json_schema(), indent=2)
 
     for iteration in range(1, MAX_REFLECTION_ITERATIONS + 1):
         msg = f"Reflection iteration {iteration}/{MAX_REFLECTION_ITERATIONS}"
@@ -479,99 +566,77 @@ async def reflect_answer(
             message=f"Iteration {iteration}",
         )
 
-        critic_prompt = (
-            f"You are a rigorous Critic AI. Audit the draft answer against the query "
-            f"and constraints.\n\n"
-            f"IMPORTANT: The draft answer may be grounded in a retrieved knowledge base. "
-            f"Do NOT flag content simply because you are personally unfamiliar with it "
-            f"or because the topic seems niche or technical. Only flag genuine logical "
-            f"contradictions, internal inconsistencies, unsupported speculative claims, "
-            f"or direct violations of the listed constraints. "
-            f"If the answer is internally consistent and addresses the query, report no issues.\n\n"
-            f"Constraints: {constraints}\n\n"
-            f"Original Query: {original_query}\n\n"
-            f"Draft Answer:\n{current_draft}\n\n"
-            f"Respond ONLY in valid JSON with no extra text or markdown fences:\n"
-            f'{{"has_issues": true, "issues": ["issue1", "issue2"]}}\n'
-            f"If no issues: "
-            f'{{"has_issues": false, "issues": []}}'
-        )
+        critic_prompt = f"""
+        You are a rigorous Critic AI. Audit the draft answer against the original query and constraints.
 
-        logger.info("Sending Critic sampling request (iteration %d).", iteration)
-        await ctx.info(f"Sending Critic sampling request to client (iteration {iteration}).")
+        Constraints:
+        {constraints}
+
+        Original Query:
+        {original_query}
+
+        Draft Answer:
+        {current_draft}
+
+        You must respond ONLY with a raw JSON object matching this schema:
+        {critic_schema}
+        """
 
         try:
             critic_result = await ctx.sample(critic_prompt, max_tokens=512)
             critic_text = critic_result.text if hasattr(critic_result, "text") else str(critic_result)
+            clean_critic = critic_text.strip().strip("```json").strip("```").strip()
+            critic_data = CriticResponse.model_validate_json(clean_critic)
         except Exception as exc:
-            logger.error("Critic sampling failed: %s", exc)
-            await ctx.error(f"Critic sampling failed: {exc}")
+            logger.error("Critic step failed parsing or validation: %s", exc)
+            await ctx.log(level="error", message=f"Critic step parsing failed: {exc}")
             break
 
-        try:
-            clean = critic_text.strip().strip("```json").strip("```").strip()
-            critic_data = json.loads(clean)
-            has_issues: bool = critic_data.get("has_issues", False)
-            issues: list[str] = critic_data.get("issues", [])
-        except (json.JSONDecodeError, ValueError):
-            logger.warning("Critic response not valid JSON — treating as no issues.")
-            await ctx.log(level="warning", message="Critic response not valid JSON — treating as no issues.")
-            has_issues = False
-            issues = []
+        logger.info("Critic: has_issues=%s, count=%d", critic_data.has_issues, len(critic_data.issues))
+        await ctx.info(f"Critic result: has_issues={critic_data.has_issues}, issues_count={len(critic_data.issues)}")
 
-        logger.info("Critic: has_issues=%s, count=%d", has_issues, len(issues))
-        await ctx.info(f"Critic result: has_issues={has_issues}, issues_count={len(issues)}")
-
-        if not has_issues:
+        if not critic_data.has_issues:
             await ctx.info(f"No issues at iteration {iteration}. Finalising.")
             break
 
-        issues_text = "\n".join(f"- {issue}" for issue in issues)
-        corrector_prompt = (
-            f"You are a precise Corrector AI. Fix every issue listed below in the draft. "
-            f"Do not introduce new unsupported claims.\n\n"
-            f"Original Query: {original_query}\n\n"
-            f"Draft Answer:\n{current_draft}\n\n"
-            f"Issues to Fix:\n{issues_text}\n\n"
-            f"Respond ONLY in valid JSON with no extra text or markdown fences:\n"
-            f'{{"corrected_answer": "full corrected answer here", '
-            f'"changes_made": ["change1", "change2"]}}'
-        )
+        issues_text = "\n".join(f"- {issue}" for issue in critic_data.issues)
+        corrector_prompt = f"""
+        You are a precise Corrector AI. Fix every issue listed below in the draft.
 
-        await ctx.info(f"Sending Corrector sampling request to client (iteration {iteration}).")
+        Original Query: {original_query}
+
+        Draft Answer:
+        {current_draft}
+
+        Issues to Fix:
+        {issues_text}
+
+        You must respond ONLY with a raw JSON object matching this schema:
+        {corrector_schema}
+        """
 
         try:
             corrector_result = await ctx.sample(corrector_prompt, max_tokens=1024)
             corrector_text = corrector_result.text if hasattr(corrector_result, "text") else str(corrector_result)
+            clean_corrector = corrector_text.strip().strip("```json").strip("```").strip()
+            corrector_data = CorrectorResponse.model_validate_json(clean_corrector)
+            current_draft = corrector_data.corrected_answer
+            await ctx.info(f"Corrector applied {len(corrector_data.changes_made)} changes.")
         except Exception as exc:
-            logger.error("Corrector sampling failed: %s", exc)
-            await ctx.error(f"Corrector sampling failed: {exc}")
+            logger.error("Corrector step failed parsing or validation: %s", exc)
+            await ctx.log(level="warning", message=f"Corrector step skipped due to structural error: {exc}")
             break
-
-        try:
-            clean = corrector_text.strip().strip("```json").strip("```").strip()
-            corrector_data = json.loads(clean)
-            current_draft = corrector_data.get("corrected_answer", current_draft)
-            changes = corrector_data.get("changes_made", [])
-        except (json.JSONDecodeError, ValueError):
-            logger.warning("Corrector response not valid JSON — keeping current draft.")
-            changes = []
-
-        await ctx.info(f"Corrector applied {len(changes)} changes.")
 
     await ctx.report_progress(
         progress=MAX_REFLECTION_ITERATIONS,
         total=MAX_REFLECTION_ITERATIONS,
         message="Reflection complete",
     )
-    await ctx.info(f"Reflection complete for query: '{original_query[:80]}'")
     return current_draft
-
 
 def main() -> None:
     logger.info("Starting ThinkingAgentServer (streamable-http) on http://0.0.0.0:8000 ...")
     mcp.run(transport="streamable-http", host="0.0.0.0", port=8000)
-
 
 if __name__ == "__main__":
     main()

@@ -1,123 +1,191 @@
-[2026-06-17 01:32:28] [CLIENT] [INFO] Flat log file : C:\Users\Victor\My Files\Kodecamp\stage3\hlp_graph_knowledge_agent\mcp_agent_system.log
-[2026-06-17 01:32:28] [CLIENT] [INFO] Vector log store: C:\Users\Victor\My Files\Kodecamp\stage3\hlp_graph_knowledge_agent\mcp_agent_log.db
-[2026-06-17 01:32:28] [CLIENT] [INFO] Session ID: 88fce356-ca53-4f0d-ae75-32b80b38534c
-[2026-06-17 01:32:33] [CLIENT] [INFO] Primary model : ChatGoogleGenerativeAI
-[2026-06-17 01:32:33] [CLIENT] [INFO] Sampling model: ChatGoogleGenerativeAI
-[2026-06-17 01:32:33] [CLIENT] [INFO] Connecting to MCP server at http://localhost:8000/mcp ...
-[2026-06-17 01:32:35] [CLIENT] [INFO]   Registered remote tool: query_knowledge
-[2026-06-17 01:32:35] [CLIENT] [INFO]   Registered remote tool: reflect_answer
-[2026-06-17 01:32:35] [CLIENT] [INFO] MCP connection established — 2 tools registered.
-[2026-06-17 01:32:37] [CLIENT] [INFO] Server log level set to DEBUG.
-[2026-06-17 01:32:37] [CLIENT] [INFO] Agent built with tools: ['reflect_answer_tool', 'query_knowledge_tool']
-[2026-06-17 01:32:37] [CLIENT] [INFO] ======================================================================
-[2026-06-17 01:32:37] [CLIENT] [INFO] Query: What is MCP Sampling and how does it work?
-[2026-06-17 01:32:37] [CLIENT] [INFO] Pre-fetching knowledge context for query...
-[2026-06-17 01:32:37] [CLIENT] [INFO] Invoking remote query_knowledge tool: 'What is MCP Sampling and how does it work?'
-[2026-06-17 01:32:38] [SERVER] [INFO] CRAG pipeline started for query: 'What is MCP Sampling and how does it work?'
-[2026-06-17 01:32:38] [SERVER] [DEBUG] Expanded queries: ['What is MCP Sampling and how does it work?', 'What is what sampling does?', 'How does what is mcp sampling and how does it work work in practice?']
-[2026-06-17 01:32:38] [SERVER] [INFO] Hierarchical retrieval yielded 12 leaf candidates.
-[2026-06-17 01:32:38] [SERVER] [DEBUG] ToT chunk 'crag-p-002' [crag/pipeline]: A=False B=True C=True → 2/3 → ACCEPT
-[2026-06-17 01:32:38] [SERVER] [DEBUG] ToT chunk 'crag-p-003' [crag/pipeline]: A=False B=True C=True → 2/3 → ACCEPT
-[2026-06-17 01:32:38] [SERVER] [DEBUG] ToT chunk 'mcp-t-001' [mcp/transport]: A=False B=True C=True → 2/3 → ACCEPT
-[2026-06-17 01:32:38] [SERVER] [DEBUG] ToT chunk 'fm-c-001' [fastmcp/context]: A=False B=True C=True → 2/3 → ACCEPT
-[2026-06-17 01:32:38] [SERVER] [DEBUG] ToT chunk 'crag-p-001' [crag/pipeline]: A=False B=True C=True → 2/3 → ACCEPT
-[2026-06-17 01:32:38] [SERVER] [DEBUG] ToT chunk 'lc-c-001' [langchain/chains]: A=False B=True C=True → 2/3 → ACCEPT
-[2026-06-17 01:32:38] [SERVER] [DEBUG] ToT chunk 'mcp-s-001' [mcp/sampling]: A=False B=True C=True → 2/3 → ACCEPT
-[2026-06-17 01:32:38] [SERVER] [DEBUG] ToT chunk 'mcp-s-002' [mcp/sampling]: A=False B=True C=True → 2/3 → ACCEPT
-[2026-06-17 01:32:38] [SERVER] [DEBUG] ToT chunk 'lc-a-001' [langchain/agents]: A=False B=True C=True → 2/3 → ACCEPT
-[2026-06-17 01:32:38] [SERVER] [DEBUG] ToT chunk 'mcp-r-001' [mcp/resources]: A=False B=True C=True → 2/3 → ACCEPT
-[2026-06-17 01:32:38] [SERVER] [DEBUG] ToT chunk 'fm-c-002' [fastmcp/context]: A=False B=True C=True → 2/3 → ACCEPT
-[2026-06-17 01:32:38] [SERVER] [DEBUG] ToT chunk 'lc-a-002' [langchain/agents]: A=False B=True C=True → 2/3 → ACCEPT
-[2026-06-17 01:32:39] [SERVER] [INFO] ToT accepted 12/12 chunks.
-[2026-06-17 01:32:39] [SERVER] [INFO] CRAG returning 5 chunks for 'What is MCP Sampling and how does it work?'.
-[2026-06-17 01:32:39] [CLIENT] [INFO] query_knowledge tool returned (1936 chars, 2384 ms).
-[2026-06-17 01:32:42] [CLIENT] [INFO] Invoking remote query_knowledge tool: 'What is MCP Sampling and how does it work?'
-[2026-06-17 01:32:43] [SERVER] [INFO] CRAG pipeline started for query: 'What is MCP Sampling and how does it work?'
-[2026-06-17 01:32:43] [SERVER] [DEBUG] Expanded queries: ['What is MCP Sampling and how does it work?', 'What is what sampling does?', 'How does what is mcp sampling and how does it work work in practice?']
-[2026-06-17 01:32:43] [SERVER] [INFO] Hierarchical retrieval yielded 12 leaf candidates.
-[2026-06-17 01:32:43] [SERVER] [DEBUG] ToT chunk 'crag-p-002' [crag/pipeline]: A=False B=True C=True → 2/3 → ACCEPT
-[2026-06-17 01:32:43] [SERVER] [DEBUG] ToT chunk 'crag-p-003' [crag/pipeline]: A=False B=True C=True → 2/3 → ACCEPT
-[2026-06-17 01:32:43] [SERVER] [DEBUG] ToT chunk 'mcp-t-001' [mcp/transport]: A=False B=True C=True → 2/3 → ACCEPT
-[2026-06-17 01:32:43] [SERVER] [DEBUG] ToT chunk 'fm-c-001' [fastmcp/context]: A=False B=True C=True → 2/3 → ACCEPT
-[2026-06-17 01:32:43] [SERVER] [DEBUG] ToT chunk 'crag-p-001' [crag/pipeline]: A=False B=True C=True → 2/3 → ACCEPT
-[2026-06-17 01:32:43] [SERVER] [DEBUG] ToT chunk 'lc-c-001' [langchain/chains]: A=False B=True C=True → 2/3 → ACCEPT
-[2026-06-17 01:32:43] [SERVER] [DEBUG] ToT chunk 'mcp-s-001' [mcp/sampling]: A=False B=True C=True → 2/3 → ACCEPT
-[2026-06-17 01:32:43] [SERVER] [DEBUG] ToT chunk 'mcp-s-002' [mcp/sampling]: A=False B=True C=True → 2/3 → ACCEPT
-[2026-06-17 01:32:43] [SERVER] [DEBUG] ToT chunk 'lc-a-001' [langchain/agents]: A=False B=True C=True → 2/3 → ACCEPT
-[2026-06-17 01:32:43] [SERVER] [DEBUG] ToT chunk 'mcp-r-001' [mcp/resources]: A=False B=True C=True → 2/3 → ACCEPT
-[2026-06-17 01:32:43] [SERVER] [DEBUG] ToT chunk 'fm-c-002' [fastmcp/context]: A=False B=True C=True → 2/3 → ACCEPT
-[2026-06-17 01:32:43] [SERVER] [DEBUG] ToT chunk 'lc-a-002' [langchain/agents]: A=False B=True C=True → 2/3 → ACCEPT
-[2026-06-17 01:32:43] [SERVER] [INFO] ToT accepted 12/12 chunks.
-[2026-06-17 01:32:43] [SERVER] [INFO] CRAG returning 5 chunks for 'What is MCP Sampling and how does it work?'.
-[2026-06-17 01:32:44] [CLIENT] [INFO] query_knowledge tool returned (1936 chars, 2278 ms).
-[2026-06-17 01:32:47] [CLIENT] [INFO] Invoking remote reflect_answer tool.
-[2026-06-17 01:32:48] [SERVER] [INFO] Reflection started for query: What is MCP Sampling and how does it work?
-[2026-06-17 01:32:48] [SERVER] [INFO] Reflection iteration 1/3
-[2026-06-17 01:32:48] [CLIENT] [INFO] [PROGRESS (reflect_answer)] 0.0% — Iteration 1
-[2026-06-17 01:32:48] [SERVER] [INFO] Sending Critic sampling request to client (iteration 1).
-[2026-06-17 01:32:48] [CLIENT] [INFO] MCP Sampling request | max_tokens=512
-[2026-06-17 01:32:53] [CLIENT] [INFO] Sampling response generated (35 chars).
-[2026-06-17 01:32:53] [SERVER] [INFO] Critic result: has_issues=False, issues_count=0
-[2026-06-17 01:32:53] [SERVER] [INFO] No issues at iteration 1. Finalising.
-[2026-06-17 01:32:54] [CLIENT] [INFO] [PROGRESS (reflect_answer)] 100.0% — Reflection complete
-[2026-06-17 01:32:54] [SERVER] [INFO] Reflection complete for query: 'What is MCP Sampling and how does it work?'
-[2026-06-17 01:32:54] [CLIENT] [INFO] reflect_answer tool returned (7353 ms).
-[2026-06-17 01:32:56] [CLIENT] [INFO] Answer:
-Final Answer: MCP Sampling is a feature within the Model Context Protocol (MCP) or FastMCP framework. It is initiated through the `ctx.sample()` method, which is made available via the `Context` object. This `Context` object is injected into tools that declare `ctx: Context` as a parameter. The `ctx.sample()` method is specifically used for "MCP Sampling requests."
+[2026-06-28 23:17:23] [CLIENT] [INFO] Flat log file : C:\Users\Victor\My Files\Kodecamp\stage3\hlp_graph_knowledge_agent\mcp_agent_system.log
+[2026-06-28 23:17:23] [CLIENT] [INFO] Vector log store: C:\Users\Victor\My Files\Kodecamp\stage3\hlp_graph_knowledge_agent\mcp_agent_log.db
+[2026-06-28 23:17:23] [CLIENT] [INFO] Session ID: 7fe88b18-7e3e-4935-9c89-7e974bea983a
+[2026-06-28 23:17:34] [CLIENT] [INFO] Primary model : ChatGoogleGenerativeAI
+[2026-06-28 23:17:34] [CLIENT] [INFO] Sampling model: ChatGoogleGenerativeAI
+[2026-06-28 23:17:34] [CLIENT] [INFO] Connecting to MCP server at http://localhost:8000/mcp ...
+[2026-06-28 23:17:37] [CLIENT] [INFO]   Registered remote tool: simulate_fault
+[2026-06-28 23:17:37] [CLIENT] [INFO]   Registered remote tool: query_knowledge
+[2026-06-28 23:17:37] [CLIENT] [INFO]   Registered remote tool: reflect_answer
+[2026-06-28 23:17:37] [CLIENT] [INFO] MCP connection established — 3 tools registered.
+[2026-06-28 23:17:38] [CLIENT] [INFO] Server log level set to DEBUG.
+[2026-06-28 23:17:38] [CLIENT] [INFO] Agent built with tools: ['reflect_answer_tool', 'query_knowledge_tool', 'simulate_fault_tool']
+[2026-06-28 23:17:38] [CLIENT] [INFO] ======================================================================
+[2026-06-28 23:17:38] [CLIENT] [INFO] Query: What is MCP Sampling and how does it work?
+[2026-06-28 23:17:38] [CLIENT] [INFO] RunnableWithRetry configured: max_attempts=3 jitter=True
+[2026-06-28 23:17:40] [CLIENT] [INFO] RunnableWithFallbacks configured: fallbacks=[_SelfHealRunnable, _AbsoluteFallbackRunnable] exception_key='error_trace'
+[2026-06-28 23:17:42] [CLIENT] [INFO] Invoking remote query_knowledge tool: 'What is MCP Sampling and how does it work?'
+[2026-06-28 23:17:43] [SERVER] [INFO] CRAG pipeline started for query: 'What is MCP Sampling and how does it work?'
+[2026-06-28 23:17:43] [SERVER] [DEBUG] Expanded queries: ['What is MCP Sampling and how does it work?', 'What is what sampling does?', 'How does what is mcp sampling and how does it work work in practice?']
+[2026-06-28 23:17:44] [SERVER] [INFO] Hierarchical retrieval yielded 14 leaf candidates.
+[2026-06-28 23:17:44] [CLIENT] [INFO] query_knowledge tool returned (99 chars, 2519 ms).
+[2026-06-28 23:17:48] [CLIENT] [INFO] Invoking remote reflect_answer tool.
+[2026-06-28 23:17:50] [SERVER] [INFO] Reflection started for query: What is MCP Sampling and how does it work?
+[2026-06-28 23:17:50] [SERVER] [INFO] Reflection iteration 1/3
+[2026-06-28 23:17:50] [CLIENT] [INFO] [PROGRESS (reflect_answer)] 0.0% — Iteration 1
+[2026-06-28 23:17:50] [CLIENT] [INFO] MCP Sampling request | max_tokens=512
+[2026-06-28 23:17:56] [CLIENT] [INFO] Sampling response generated (574 chars).
+[2026-06-28 23:17:56] [SERVER] [INFO] Critic result: has_issues=True, issues_count=2
+[2026-06-28 23:17:56] [CLIENT] [INFO] MCP Sampling request | max_tokens=1024
+[2026-06-28 23:18:07] [CLIENT] [INFO] Sampling response generated (3140 chars).
+[2026-06-28 23:18:07] [SERVER] [INFO] Corrector applied 6 changes.
+[2026-06-28 23:18:07] [SERVER] [INFO] Reflection iteration 2/3
+[2026-06-28 23:18:07] [CLIENT] [INFO] [PROGRESS (reflect_answer)] 33.3% — Iteration 2
+[2026-06-28 23:18:07] [CLIENT] [INFO] MCP Sampling request | max_tokens=512
+[2026-06-28 23:18:12] [CLIENT] [INFO] Sampling response generated (53 chars).
+[2026-06-28 23:18:12] [SERVER] [INFO] Critic result: has_issues=False, issues_count=0
+[2026-06-28 23:18:12] [SERVER] [INFO] No issues at iteration 2. Finalising.
+[2026-06-28 23:18:12] [CLIENT] [INFO] [PROGRESS (reflect_answer)] 100.0% — Reflection complete
+[2026-06-28 23:18:13] [CLIENT] [INFO] reflect_answer tool returned (24027 ms).
+[2026-06-28 23:20:03] [CLIENT] [WARNING] 
+CRITICAL: Primary Chain failed!
+Error Captured: Error calling model 'gemini-2.5-flash' (RESOURCE_EXHAUSTED): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To mon
 
-However, the provided knowledge does not elaborate on the specific mechanics of what MCP Sampling entails or how it operates beyond this initiation point. Therefore, a detailed explanation of its internal workings cannot be provided based on the current information.
-[2026-06-17 01:32:56] [CLIENT] [INFO] ======================================================================
-[2026-06-17 01:32:56] [CLIENT] [INFO] ======================================================================
-[2026-06-17 01:32:56] [CLIENT] [INFO] Query: How should I design a LangChain agent that uses MCP tools?
-[2026-06-17 01:32:56] [CLIENT] [INFO] Pre-fetching knowledge context for query...
-[2026-06-17 01:32:56] [CLIENT] [INFO] Invoking remote query_knowledge tool: 'How should I design a LangChain agent that uses MCP tools?'
-[2026-06-17 01:32:57] [SERVER] [INFO] CRAG pipeline started for query: 'How should I design a LangChain agent that uses MCP tools?'
-[2026-06-17 01:32:57] [SERVER] [DEBUG] Expanded queries: ['How should I design a LangChain agent that uses MCP tools?', 'What is should design langchain?', 'How does how should i design a langchain agent that uses mcp tools work in practice?']
-[2026-06-17 01:32:57] [SERVER] [INFO] Hierarchical retrieval yielded 12 leaf candidates.
-[2026-06-17 01:32:57] [SERVER] [DEBUG] ToT chunk 'lc-a-001' [langchain/agents]: A=True B=True C=True → 3/3 → ACCEPT
-[2026-06-17 01:32:57] [SERVER] [DEBUG] ToT chunk 'fm-c-001' [fastmcp/context]: A=True B=True C=True → 3/3 → ACCEPT
-[2026-06-17 01:32:57] [SERVER] [DEBUG] ToT chunk 'mcp-t-001' [mcp/transport]: A=False B=True C=True → 2/3 → ACCEPT
-[2026-06-17 01:32:57] [SERVER] [DEBUG] ToT chunk 'lc-c-001' [langchain/chains]: A=False B=True C=True → 2/3 → ACCEPT
-[2026-06-17 01:32:57] [SERVER] [DEBUG] ToT chunk 'mcp-s-002' [mcp/sampling]: A=True B=True C=True → 3/3 → ACCEPT
-[2026-06-17 01:32:57] [SERVER] [DEBUG] ToT chunk 'crag-p-002' [crag/pipeline]: A=False B=True C=True → 2/3 → ACCEPT
-[2026-06-17 01:32:57] [SERVER] [DEBUG] ToT chunk 'crag-p-003' [crag/pipeline]: A=False B=True C=True → 2/3 → ACCEPT
-[2026-06-17 01:32:57] [SERVER] [DEBUG] ToT chunk 'lc-a-002' [langchain/agents]: A=True B=True C=True → 3/3 → ACCEPT
-[2026-06-17 01:32:57] [SERVER] [DEBUG] ToT chunk 'crag-p-001' [crag/pipeline]: A=False B=True C=True → 2/3 → ACCEPT
-[2026-06-17 01:32:57] [SERVER] [DEBUG] ToT chunk 'mcp-r-001' [mcp/resources]: A=False B=True C=True → 2/3 → ACCEPT
-[2026-06-17 01:32:57] [SERVER] [DEBUG] ToT chunk 'mcp-s-001' [mcp/sampling]: A=False B=True C=True → 2/3 → ACCEPT
-[2026-06-17 01:32:57] [SERVER] [DEBUG] ToT chunk 'fm-c-002' [fastmcp/context]: A=False B=True C=True → 2/3 → ACCEPT
-[2026-06-17 01:32:57] [SERVER] [INFO] ToT accepted 12/12 chunks.
-[2026-06-17 01:32:57] [SERVER] [INFO] CRAG returning 5 chunks for 'How should I design a LangChain agent that uses MCP tools?'.
-[2026-06-17 01:32:58] [CLIENT] [INFO] query_knowledge tool returned (1861 chars, 2169 ms).
-[2026-06-17 01:33:03] [CLIENT] [INFO] Invoking remote reflect_answer tool.
-[2026-06-17 01:33:04] [SERVER] [INFO] Reflection started for query: How should I design a LangChain agent that uses MCP tools?
-[2026-06-17 01:33:05] [SERVER] [INFO] Reflection iteration 1/3
-[2026-06-17 01:33:05] [CLIENT] [INFO] [PROGRESS (reflect_answer)] 0.0% — Iteration 1
-[2026-06-17 01:33:05] [SERVER] [INFO] Sending Critic sampling request to client (iteration 1).
-[2026-06-17 01:33:05] [CLIENT] [INFO] MCP Sampling request | max_tokens=512
-[2026-06-17 01:33:10] [CLIENT] [INFO] Sampling response generated (35 chars).
-[2026-06-17 01:33:10] [SERVER] [INFO] Critic result: has_issues=False, issues_count=0
-[2026-06-17 01:33:10] [SERVER] [INFO] No issues at iteration 1. Finalising.
-[2026-06-17 01:33:10] [CLIENT] [INFO] [PROGRESS (reflect_answer)] 100.0% — Reflection complete
-[2026-06-17 01:33:10] [SERVER] [INFO] Reflection complete for query: 'How should I design a LangChain agent that uses MCP tools?'
-[2026-06-17 01:33:11] [CLIENT] [INFO] reflect_answer tool returned (7669 ms).
-[2026-06-17 01:33:15] [CLIENT] [INFO] Answer:
-Thought: I now have a verified answer.
-Final Answer: To design a LangChain agent that uses MCP tools, you should leverage LangChain's ReAct agent loop and integrate your MCP tools as part of the agent's toolset.
+--- [STEP 2] Routing to Self-Heal Chain with Error Trace... ---
 
-Here's a design approach:
+[2026-06-28 23:20:06] [CLIENT] [INFO] 
+HEALED: Self-Heal Chain recovered successfully via ChatGroq!
+Recovery answer: MCP (Markov Chain Monte Carlo) sampling is a computational method used to approximate complex probability distributions. It's a widely used technique in statistics, machine learning, and other fields to sample from a target distribution, which is often difficult or impossible to sample from directly
 
-1.  **LangChain Agent Foundation:**
-    *   LangChain agents operate on a **ReAct loop** (Thought → Action → Observation), where the agent decides on an action, executes it using a tool, and observes the result to inform its next thought.
-    *   Use the `create_agent` factory function, which accepts an LLM (model), a list of tools, and a system prompt. This factory returns a `LangGraph` compiled graph that handles the agent's execution flow, streaming events like model outputs and tool calls.
+[2026-06-28 23:20:06] [CLIENT] [WARNING] [SELF-HEAL RESPONSE] MCP (Markov Chain Monte Carlo) sampling is a computational method used to approximate complex probability distributions. It's a widely used technique in statistics, machine learning, and other fields 
+[2026-06-28 23:20:06] [CLIENT] [INFO] Answer:
+MCP (Markov Chain Monte Carlo) sampling is a computational method used to approximate complex probability distributions. It's a widely used technique in statistics, machine learning, and other fields to sample from a target distribution, which is often difficult or impossible to sample from directly.
 
-2.  **Integrating MCP Tools:**
-    *   Your MCP tools should be defined and exposed to the LangChain agent.
-    *   **Context Injection:** For MCP tools that require interaction with the Model Context Protocol (MCP) server (e.g., for logging, progress updates, or MCP Sampling), ensure they declare `ctx: Context` as a parameter. The `Context` object provides methods like `ctx.info()`, `ctx.debug()`, `ctx.error()` for forwarding logs, `ctx.report_progress()` for progress updates, and `ctx.sample()` for initiating MCP Sampling requests.
+The basic idea behind MCP sampling is to create a Markov chain that converges to the target distribution. A Markov chain is a sequence of random states, where each state depends only on the previous state. The chain is designed to explore the state space in a way that eventually leads to a stationary distribution, which is the target distribution.
 
-3.  **Agent Composition with LCEL:**
-    *   LangChain Expression Language (LCEL) can be used to compose different components of your agent using the `|` (pipe) operator. This allows you to chain together prompts, the LLM, and output parsers, creating a robust and modular agent. Each component in the chain should be a `Runnable` with `invoke()`, `stream()`, and `batch()` methods.
+The process works as follows:
 
-By following this design, your LangChain agent will be able to reason, select, and execute MCP tools, leveraging the advanced capabilities provided by the MCP `Context` object for enhanced communication and control within the MCP ecosystem.
-[2026-06-17 01:33:15] [CLIENT] [INFO] ======================================================================
-[2026-06-17 01:33:15] [CLIENT] [INFO] Session complete. Log store stats: total_entries=84 sessions=1
+1. **Initialization**: The chain is initialized with an arbitrary state.
+2. **Proposal**: A new state is proposed based on the current state, using a proposal distribution.
+3. **Acceptance**: The proposed state is accepted or rejected based on a probability calculated using the target distribution and the proposal distribution.
+4. **Iteration**: Steps 2-3 are repeated, generating a sequence of states.
+
+The key to MCP sampling is that the proposal distribution is designed to be easy to sample from, and the acceptance probability is calculated to ensure that the chain converges to the target distribution. The resulting sequence of states is a sample from the target distribution.
+
+There are several types of MCP sampling algorithms, including:
+
+* **Metropolis-Hastings**: A widely used algorithm that uses a symmetric proposal distribution.
+* **Gibbs sampling**: An algorithm that uses a sequence of conditional distributions to sample from a multivariate distribution.
+* **Hamiltonian Monte Carlo**: An algorithm that uses Hamiltonian dynamics to propose new states.
+
+MCP sampling has many applications, including:
+
+* **Bayesian inference**: MCP sampling is used to approximate posterior distributions in Bayesian inference.
+* **Machine learning**: MCP sampling is used in machine learning algorithms, such as variational inference and stochastic gradient descent.
+* **Statistics**: MCP sampling is used to estimate complex statistical models, such as mixture models and hierarchical models.
+
+In summary, MCP sampling is a powerful technique for approximating complex probability distributions. It works by creating a Markov chain that converges to the target distribution, using a proposal distribution and an acceptance probability. While I couldn't provide more specific information or examples using external tools, I hope this explanation provides a good introduction to the concept of MCP sampling.
+[2026-06-28 23:20:06] [CLIENT] [INFO] ======================================================================
+[2026-06-28 23:20:06] [CLIENT] [INFO] ======================================================================
+[2026-06-28 23:20:06] [CLIENT] [INFO] Query: How should I design a LangChain agent that uses MCP tools?
+[2026-06-28 23:20:06] [CLIENT] [INFO] RunnableWithRetry configured: max_attempts=3 jitter=True
+[2026-06-28 23:20:07] [CLIENT] [INFO] RunnableWithFallbacks configured: fallbacks=[_SelfHealRunnable, _AbsoluteFallbackRunnable] exception_key='error_trace'
+[2026-06-28 23:20:56] [CLIENT] [INFO] Invoking remote query_knowledge tool: 'designing a LangChain agent with MCP tools'
+[2026-06-28 23:20:58] [SERVER] [INFO] CRAG pipeline started for query: 'designing a LangChain agent with MCP tools'
+[2026-06-28 23:20:58] [SERVER] [DEBUG] Expanded queries: ['designing a LangChain agent with MCP tools', 'What is designing langchain agent?', 'How does designing a langchain agent with mcp tools work in practice?']
+[2026-06-28 23:20:58] [SERVER] [INFO] Hierarchical retrieval yielded 11 leaf candidates.
+[2026-06-28 23:20:58] [CLIENT] [INFO] query_knowledge tool returned (99 chars, 2187 ms).
+[2026-06-28 23:22:14] [CLIENT] [WARNING] 
+CRITICAL: Primary Chain failed!
+Error Captured: Error calling model 'gemini-2.5-flash' (RESOURCE_EXHAUSTED): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To mon
+
+--- [STEP 2] Routing to Self-Heal Chain with Error Trace... ---
+
+[2026-06-28 23:22:17] [CLIENT] [INFO] 
+HEALED: Self-Heal Chain recovered successfully via ChatGroq!
+Recovery answer: Designing a LangChain agent that utilizes MCP (Memory, Cognition, and Perception) tools involves creating an architecture that can effectively integrate and leverage these tools to achieve a specific goal or set of tasks. LangChain is a framework that allows for the creation of agents that can inter
+
+[2026-06-28 23:22:17] [CLIENT] [WARNING] [SELF-HEAL RESPONSE] Designing a LangChain agent that utilizes MCP (Memory, Cognition, and Perception) tools involves creating an architecture that can effectively integrate and leverage these tools to achieve a specific 
+[2026-06-28 23:22:17] [CLIENT] [INFO] Answer:
+Designing a LangChain agent that utilizes MCP (Memory, Cognition, and Perception) tools involves creating an architecture that can effectively integrate and leverage these tools to achieve a specific goal or set of tasks. LangChain is a framework that allows for the creation of agents that can interact with various tools and models, including those focused on memory, cognition, and perception, to generate text, answer questions, or complete tasks based on the inputs and the tools available to the agent.
+
+To design such an agent, you would typically follow these steps:
+
+1. **Define the Objective**: Clearly outline what you want the LangChain agent to accomplish. This could range from answering complex questions that require the integration of multiple knowledge sources to generating creative content based on specific prompts or inputs.
+
+2. **Select Relevant MCP Tools**: Identify which MCP tools are most relevant to your objective. For memory, this might include databases or knowledge graphs that the agent can query. For cognition, tools that can process and analyze information, such as natural language processing (NLP) models, might be crucial. Perception tools could involve image or audio analysis models, depending on the task.
+
+3. **Design the Agent's Workflow**: Determine how the agent will interact with these tools. This involves defining the sequence of operations (e.g., querying a database, processing the results with an NLP model, and then using the output to inform a decision or generate text). The workflow should be designed to maximize the strengths of each tool while minimizing their weaknesses.
+
+4. **Implement the Agent**: Using the LangChain framework, implement the designed workflow. This involves writing code that integrates the selected tools, defines how the agent interacts with each tool, and specifies how the outputs from one tool are used as inputs for the next.
+
+5. **Test and Refine**: Once the agent is implemented, test it with a variety of inputs and scenarios to ensure it performs as expected. Refine the agent's workflow and tool integration as necessary based on the results of these tests.
+
+Without access to specific MCP tools or the ability to query external knowledge bases, it's challenging to provide a detailed, tool-specific design for a LangChain agent. The design process heavily depends on the capabilities and limitations of the tools you intend to use, as well as the specific requirements of your project.
+
+To proceed effectively, you would need information on:
+- The specific MCP tools available for integration.
+- The technical capabilities and limitations of these tools.
+- The exact requirements and objectives of the project (e.g., the type of tasks the agent needs to perform, the input/output formats, etc.).
+
+Given these constraints, the best approach would be to consult the documentation for the LangChain framework and the MCP tools you're interested in, and to plan your agent's design based on the functionalities and limitations outlined in that documentation.
+[2026-06-28 23:22:17] [CLIENT] [INFO] ======================================================================
+[2026-06-28 23:22:17] [CLIENT] [INFO] ======================================================================
+[2026-06-28 23:22:17] [CLIENT] [INFO] Query: What are the LangChain resilience primitives for building fault-tolerant chains?
+[2026-06-28 23:22:17] [CLIENT] [INFO] RunnableWithRetry configured: max_attempts=3 jitter=True
+[2026-06-28 23:22:18] [CLIENT] [INFO] RunnableWithFallbacks configured: fallbacks=[_SelfHealRunnable, _AbsoluteFallbackRunnable] exception_key='error_trace'
+[2026-06-28 23:24:09] [CLIENT] [WARNING] 
+CRITICAL: Primary Chain failed!
+Error Captured: Error calling model 'gemini-2.5-flash' (RESOURCE_EXHAUSTED): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To mon
+
+--- [STEP 2] Routing to Self-Heal Chain with Error Trace... ---
+
+[2026-06-28 23:24:11] [CLIENT] [INFO] 
+HEALED: Self-Heal Chain recovered successfully via ChatGroq!
+Recovery answer: I've encountered an error while attempting to access external information, but I'll do my best to provide a helpful answer using my internal knowledge.
+
+LangChain is a framework for building applications that utilize large language models, and it provides several resilience primitives for building f
+
+[2026-06-28 23:24:11] [CLIENT] [WARNING] [SELF-HEAL RESPONSE] I've encountered an error while attempting to access external information, but I'll do my best to provide a helpful answer using my internal knowledge.
+
+LangChain is a framework for building applicati
+[2026-06-28 23:24:12] [CLIENT] [INFO] Answer:
+I've encountered an error while attempting to access external information, but I'll do my best to provide a helpful answer using my internal knowledge.
+
+LangChain is a framework for building applications that utilize large language models, and it provides several resilience primitives for building fault-tolerant chains. While I don't have have access to the most up-to-date information, I can provide some general insights on the topic.
+
+LangChain's resilience primitives are designed to help developers build more robust and reliable chains that can handle errors, failures, and other unexpected events. Some of the key primitives include:
+
+1. **Error handling**: LangChain provides mechanisms for handling errors that occur during chain execution, such as retrying failed steps or falling back to alternative models.
+2. **Model redundancy**: By using multiple models or instances of the same model, LangChain can provide redundancy and failover capabilities, ensuring that the chain remains operational even if one model fails.
+3. **Chain segmentation**: Breaking down complex chains into smaller, independent segments can help isolate errors and prevent them from propagating throughout the entire chain.
+4. **Caching and memoization**: LangChain can cache or memoize intermediate results, allowing the chain to recover more quickly from errors or failures.
+5. **Retry mechanisms**: LangChain provides retry mechanisms that can be used to retry failed steps or entire chains, helping to ensure that the application remains operational even in the face of errors.
+
+To provide a more detailed and accurate answer, I would need access to the LangChain documentation or other external resources. Specifically, I would need information on the latest LangChain release, its documentation, and any relevant blog posts or tutorials that discuss the resilience primitives in more detail.
+
+If you're looking to build fault-tolerant chains using LangChain, I recommend checking out the official LangChain documentation and exploring the various resilience primitives that are available. Additionally, you may want to consider consulting with experts in the field or seeking out community resources, such as forums or discussion groups, where you can ask questions and get help with implementing these primitives in your application.
+[2026-06-28 23:24:12] [CLIENT] [INFO] ======================================================================
+[2026-06-28 23:24:12] [CLIENT] [INFO] ======================================================================
+[2026-06-28 23:24:12] [CLIENT] [INFO] 
+--- [RESILIENCE TEST] Sending fault to primary chain... ---
+
+[2026-06-28 23:24:12] [CLIENT] [INFO] RunnableWithRetry configured: max_attempts=3 jitter=True
+[2026-06-28 23:24:13] [CLIENT] [INFO] RunnableWithFallbacks configured: fallbacks=[_SelfHealRunnable, _AbsoluteFallbackRunnable] exception_key='error_trace'
+[2026-06-28 23:24:15] [SERVER] [WARNING] [FAULT INJECTION] tool_target=query_knowledge fault_type=runtime_error severity=medium
+[2026-06-28 23:24:18] [SERVER] [WARNING] [FAULT INJECTION] tool_target=query_knowledge fault_type=runtime_error severity=medium
+[2026-06-28 23:24:23] [SERVER] [WARNING] [FAULT INJECTION] tool_target=query_knowledge fault_type=runtime_error severity=medium
+[2026-06-28 23:24:23] [CLIENT] [WARNING] 
+CRITICAL: Primary Chain failed!
+Error Captured: Simulated execution failure in 'query_knowledge': downstream dependency returned HTTP 503. Retry budget may be available.
+
+--- [STEP 2] Routing to Self-Heal Chain with Error Trace... ---
+
+[2026-06-28 23:24:25] [CLIENT] [INFO] 
+HEALED: Self-Heal Chain recovered successfully via ChatGroq!
+Recovery answer: I'm happy to help with the original query, "resilience test input." 
+
+Resilience testing is a type of testing that evaluates how well a system, application, or component can withstand and recover from failures, disruptions, or other adverse conditions. The goal of resilience testing is to ensure tha
+
+[2026-06-28 23:24:25] [CLIENT] [INFO] 
+HEALED: Self-Heal Chain recovered successfully!
+Recovery answer: I'm happy to help with the original query, "resilience test input." 
+
+Resilience testing is a type of testing that evaluates how well a system, application, or component can withstand and recover from failures, disruptions, or other adverse conditions. The goal of resilience testing is to ensure tha
+
+--- [RESILIENCE TEST COMPLETE] self_heal_iterations=4 ---
+
+[2026-06-28 23:24:25] [CLIENT] [INFO] Resilience summary: fallback_activations=4 self_heal_iterations=4 absolute_fallback_hits=0
+[2026-06-28 23:24:25] [CLIENT] [INFO] ======================================================================
+[2026-06-28 23:24:25] [CLIENT] [INFO] Session complete. Log store stats: total_entries=205 sessions=3
+[2026-06-28 23:24:25] [CLIENT] [INFO] Resilience summary: fallback_activations=4 self_heal_iterations=4 absolute_fallback_hits=0

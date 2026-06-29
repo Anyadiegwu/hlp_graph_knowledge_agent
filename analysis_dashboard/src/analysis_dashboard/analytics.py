@@ -19,12 +19,8 @@ import numpy as np
 
 logger = logging.getLogger("analysis_dashboard.analytics")
 
-# Use a clean seaborn theme
 sns.set_theme(style="darkgrid", palette="muted")
 
-# Resolve charts/ relative to the repo root, not the process cwd.
-# __file__ = <repo_root>/analysis_dashboard/src/analysis_dashboard/analytics.py
-# parents[3] = repo root
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _env_chart_dir = os.getenv("CHART_OUTPUT_DIR", "")
 CHART_OUTPUT_DIR = Path(_env_chart_dir) if _env_chart_dir else (_REPO_ROOT / "charts")
@@ -54,10 +50,6 @@ def _save_fig(fig: plt.Figure, save_path: str | None, default_name: str) -> str 
     logger.info("Chart saved to %s", out)
     return str(out)
 
-
-# ─────────────────────────────────────────────────────────────
-# Analytics functions (called by @tool wrappers in agent.py)
-# ─────────────────────────────────────────────────────────────
 
 def compute_latency_trend(
     log_entries: list[dict],
@@ -92,7 +84,6 @@ def compute_latency_trend(
     fig, axes = plt.subplots(2, 1, figsize=(12, 8))
     fig.suptitle("Tool Latency Trend Analysis", fontsize=14, fontweight="bold")
 
-    # Panel 1: per-tool latency scatter + moving average
     ax1 = axes[0]
     tools = df["tool_name"].unique()
     palette = sns.color_palette("tab10", len(tools))
@@ -112,7 +103,6 @@ def compute_latency_trend(
     ax1.set_title("Per-Tool Latency with Moving Average")
     ax1.legend(fontsize=8)
 
-    # Panel 2: box plot of latency distribution per tool
     ax2 = axes[1]
     latency_data = [
         df[df["tool_name"] == t]["latency_ms"].dropna().values
@@ -142,7 +132,6 @@ def compute_latency_trend(
     saved     = _save_fig(fig, save_path, "latency_trend.png")
     plt.close(fig)
 
-    # Compute summary stats
     stats = df.groupby("tool_name")["latency_ms"].agg(["mean", "median", "max", "count"]).round(1)
     summary_lines = ["Latency Summary (ms):"]
     for tool, row in stats.iterrows():
@@ -180,7 +169,6 @@ def compute_token_metrics(
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
     fig.suptitle("Token Consumption Analysis", fontsize=14, fontweight="bold")
 
-    # Panel 1: stacked bar by interaction_type
     ax1 = axes[0]
     type_totals = df.groupby("interaction_type")["token_count"].sum().sort_values(ascending=False)
     if not type_totals.empty:
@@ -192,7 +180,6 @@ def compute_token_metrics(
     ax1.set_title("Token Usage by Interaction Type")
     ax1.tick_params(axis="x", rotation=25)
 
-    # Panel 2: cumulative token usage over time
     ax2 = axes[1]
     df["cumulative_tokens"] = df["token_count"].cumsum()
     ax2.plot(range(len(df)), df["cumulative_tokens"], color="steelblue", linewidth=2)
@@ -245,7 +232,6 @@ def compute_error_frequency(
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
     fig.suptitle("Error Frequency Analysis", fontsize=14, fontweight="bold")
 
-    # Panel 1: error vs non-error timeline
     ax1 = axes[0]
     df["is_error"] = (df["interaction_type"] == "error").astype(int)
     ax1.fill_between(range(len(df)), df["is_error"], alpha=0.5, color="crimson", label="Error")
@@ -256,7 +242,6 @@ def compute_error_frequency(
     ax1.set_title("Error vs Normal Events Timeline")
     ax1.legend()
 
-    # Panel 2: error rate by interaction type
     ax2 = axes[1]
     type_counts = df.groupby("interaction_type").size()
     error_count = type_counts.get("error", 0)
@@ -317,7 +302,6 @@ def generate_dashboard_chart(
     fig, axes = plt.subplots(2, 2, figsize=(16, 10))
     fig.suptitle("HLP System Health Dashboard", fontsize=16, fontweight="bold")
 
-    # Panel 1: Events by interaction_type
     ax1 = axes[0, 0]
     type_counts = df["interaction_type"].value_counts()
     wedges, texts, autotexts = ax1.pie(
@@ -329,7 +313,6 @@ def generate_dashboard_chart(
     )
     ax1.set_title("Event Distribution")
 
-    # Panel 2: Latency over time (if available)
     ax2 = axes[0, 1]
     lat_df = df[df["latency_ms"].notna()]
     if not lat_df.empty:
@@ -341,7 +324,6 @@ def generate_dashboard_chart(
         ax2.legend()
     ax2.set_title("Latency Over Time")
 
-    # Panel 3: Cumulative tokens
     ax3 = axes[1, 0]
     df["cum_tokens"] = df["token_count"].cumsum()
     ax3.plot(df.index, df["cum_tokens"], color="darkorange", linewidth=2)
@@ -350,7 +332,6 @@ def generate_dashboard_chart(
     ax3.set_ylabel("Cumulative Tokens")
     ax3.set_title("Cumulative Token Consumption")
 
-    # Panel 4: Error rate by namespace
     ax4 = axes[1, 1]
     ns_errors = df.groupby("namespace")["is_error"].agg(["sum", "count"])
     ns_errors["error_rate"] = ns_errors["sum"] / ns_errors["count"].clip(lower=1)
@@ -365,7 +346,6 @@ def generate_dashboard_chart(
     plt.tight_layout()
     chart_b64 = _fig_to_base64(fig)
 
-    # Auto-save to chart output dir
     if save_path is None:
         ts_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         save_path = str(_ensure_chart_dir() / f"dashboard_{ts_str}.png")

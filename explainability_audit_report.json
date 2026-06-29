@@ -1,0 +1,123 @@
+{
+  "audit_metadata": {
+    "session_id": "7fe88b18-7e3e-4935-9c89-7e974bea983a",
+    "entries_analysed": 20,
+    "text_entries_for_lime": 0,
+    "structured_entries_for_shap": 5
+  },
+  "graph_context": {
+    "nodes": [],
+    "relationships": [],
+    "cypher_used": "MATCH (s:Session {session_id: $anchor_id}) OPTIONAL MATCH path1 = (s)-[:TRIGGERED]->(a:AgentAction) OPTIONAL MATCH path2 = (a)-[:ROUTED_TO]->(m:MCPServerCall) OPTIONAL MATCH path3 = (m)-[:DEPENDS_ON*1..2]->(m2:MCPServerCall) RETURN s, collect(DISTINCT a) AS agent_actions, collect(DISTINCT m) AS mcp_calls, collect(DISTINCT m2) AS chained_calls",
+    "context_summary": "Neo4j Subgraph Context (anchor=7fe88b18-7e3e-4935-9c89-7e974bea983a, hop_depth=2):\n  Sessions found    : 0\n  AgentAction nodes : 0\n  MCPServerCall nodes: 0",
+    "node_counts": {
+      "sessions": 0,
+      "agent_actions": 0,
+      "mcp_calls": 0
+    }
+  },
+  "lime_results": {
+    "entries": [],
+    "method": "proxy_lime",
+    "error": "No entries provided."
+  },
+  "shap_results": {
+    "feature_contributions": {
+      "latency_ms": 0.4851,
+      "token_count": 0.4554,
+      "content_length": 0.4612
+    },
+    "per_entry_shap": [
+      {
+        "entry_id": 158,
+        "interaction_type": "system_event",
+        "is_anomalous": false,
+        "anomaly_score": 1.234,
+        "shap_values": {
+          "latency_ms": 0.5885,
+          "token_count": 0.3468,
+          "content_length": 0.2987
+        },
+        "feature_values": {
+          "latency_ms": 2634.03,
+          "token_count": 0.0,
+          "content_length": 126.0
+        }
+      },
+      {
+        "entry_id": 164,
+        "interaction_type": "resource_read",
+        "is_anomalous": false,
+        "anomaly_score": 1.275,
+        "shap_values": {
+          "latency_ms": 0.6207,
+          "token_count": 0.3423,
+          "content_length": 0.312
+        },
+        "feature_values": {
+          "latency_ms": 2518.85,
+          "token_count": 0.0,
+          "content_length": 99.0
+        }
+      },
+      {
+        "entry_id": 169,
+        "interaction_type": "sampling_response",
+        "is_anomalous": false,
+        "anomaly_score": 0.3114,
+        "shap_values": {
+          "latency_ms": 0.1348,
+          "token_count": 0.0633,
+          "content_length": 0.1133
+        },
+        "feature_values": {
+          "latency_ms": 5704.39,
+          "token_count": 81.0,
+          "content_length": 574.0
+        }
+      },
+      {
+        "entry_id": 172,
+        "interaction_type": "sampling_response",
+        "is_anomalous": true,
+        "anomaly_score": 3.3156,
+        "shap_values": {
+          "latency_ms": 1.0092,
+          "token_count": 1.1485,
+          "content_length": 1.1579
+        },
+        "feature_values": {
+          "latency_ms": 10093.21,
+          "token_count": 418.0,
+          "content_length": 3140.0
+        }
+      },
+      {
+        "entry_id": 176,
+        "interaction_type": "sampling_response",
+        "is_anomalous": false,
+        "anomaly_score": 0.8726,
+        "shap_values": {
+          "latency_ms": 0.0725,
+          "token_count": 0.3759,
+          "content_length": 0.4242
+        },
+        "feature_values": {
+          "latency_ms": 4632.73,
+          "token_count": 8.0,
+          "content_length": 53.0
+        }
+      }
+    ],
+    "anomaly_count": 1,
+    "dominant_feature": "latency_ms",
+    "method": "proxy_shap",
+    "features_used": [
+      "latency_ms",
+      "token_count",
+      "content_length"
+    ],
+    "graph_context_used": true,
+    "total_entries": 5
+  }
+}

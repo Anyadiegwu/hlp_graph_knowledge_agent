@@ -10,14 +10,11 @@ from typing import Any
 
 logger = logging.getLogger("analysis_dashboard.store_reader")
 
-# ─────────────────────────────────────────────────────────────
-# Cosine similarity (pure Python — no numpy required here)
-# ─────────────────────────────────────────────────────────────
 
 def _cosine(a: list[float], b: list[float]) -> float:
     if len(a) != len(b):
         return 0.0
-    dot   = sum(x * y for x, y in zip(a, b))
+    dot    = sum(x * y for x, y in zip(a, b))
     norm_a = sum(x * x for x in a) ** 0.5
     norm_b = sum(x * x for x in b) ** 0.5
     if norm_a == 0 or norm_b == 0:
@@ -25,15 +22,11 @@ def _cosine(a: list[float], b: list[float]) -> float:
     return dot / (norm_a * norm_b)
 
 
-# ─────────────────────────────────────────────────────────────
-# Embedding (Gemini, same as log_store.py)
-# ─────────────────────────────────────────────────────────────
-
 class _EmbeddingProvider:
     def __init__(self) -> None:
-        self._model  = None
-        self._stub   = False
-        self._dim    = 768
+        self._model = None
+        self._stub  = False
+        self._dim   = 768
 
     def _load(self) -> None:
         if self._model or self._stub:
@@ -64,16 +57,7 @@ class _EmbeddingProvider:
 _embedder = _EmbeddingProvider()
 
 
-# ─────────────────────────────────────────────────────────────
-# SharedLogStoreReader
-# ─────────────────────────────────────────────────────────────
-
 class SharedLogStoreReader:
-    """
-    Read-only view over an HLPLogStore SQLite database.
-    Safe to open from a separate process (SQLite WAL mode or read-only connection).
-    """
-
     def __init__(self, db_path: str | Path) -> None:
         self.db_path = Path(db_path)
         self._lock   = threading.Lock()
@@ -94,7 +78,6 @@ class SharedLogStoreReader:
                     uri, uri=True, check_same_thread=False, timeout=10
                 )
             except Exception:
-                # DB doesn't exist yet — open in create mode but never write
                 self._conn = sqlite3.connect(
                     str(self.db_path), check_same_thread=False, timeout=10
                 )
@@ -125,18 +108,18 @@ class SharedLogStoreReader:
         try:
             with self._lock:
                 conn = self._get_conn()
-                total     = conn.execute("SELECT COUNT(*) FROM log_entries").fetchone()[0]
-                sessions  = conn.execute("SELECT COUNT(DISTINCT session_id) FROM log_entries").fetchone()[0]
-                by_type   = conn.execute(
+                total    = conn.execute("SELECT COUNT(*) FROM log_entries").fetchone()[0]
+                sessions = conn.execute("SELECT COUNT(DISTINCT session_id) FROM log_entries").fetchone()[0]
+                by_type  = conn.execute(
                     "SELECT interaction_type, COUNT(*) as cnt FROM log_entries GROUP BY interaction_type"
                 ).fetchall()
-                by_ns     = conn.execute(
+                by_ns    = conn.execute(
                     "SELECT namespace, COUNT(*) as cnt FROM log_entries GROUP BY namespace ORDER BY cnt DESC LIMIT 10"
                 ).fetchall()
-                avg_lat   = conn.execute(
+                avg_lat  = conn.execute(
                     "SELECT AVG(latency_ms) FROM log_entries WHERE latency_ms IS NOT NULL"
                 ).fetchone()[0]
-                errors    = conn.execute(
+                errors   = conn.execute(
                     "SELECT COUNT(*) FROM log_entries WHERE interaction_type = 'error'"
                 ).fetchone()[0]
                 tool_lats = conn.execute(
@@ -165,7 +148,12 @@ class SharedLogStoreReader:
 
     def get_sessions(self) -> list[str]:
         rows = self._safe_rows(
-            "SELECT DISTINCT session_id FROM log_entries ORDER BY MIN(timestamp) ASC"
+            """
+            SELECT session_id
+            FROM log_entries
+            GROUP BY session_id
+            ORDER BY MIN(timestamp) ASC
+            """
         )
         return [r[0] for r in rows]
 
@@ -217,7 +205,7 @@ class SharedLogStoreReader:
                 else:
                     stored = json.loads(emb_raw)
                     score  = _cosine(query_vec, stored)
-            d["_score"] = score
+            d["_score"]   = score
             d["metadata"] = json.loads(d.get("metadata_json", "{}"))
             results.append(d)
 
@@ -231,10 +219,6 @@ class SharedLogStoreReader:
                 self._conn = None
 
 
-# ─────────────────────────────────────────────
-# Singleton factory
-# ─────────────────────────────────────────────
-
 _reader_instance: SharedLogStoreReader | None = None
 
 
@@ -242,13 +226,8 @@ def get_shared_log_store(db_path: str | Path | None = None) -> SharedLogStoreRea
     global _reader_instance
     if _reader_instance is None:
         if db_path is None or str(db_path) == "":
-            # __file__ = <repo_root>/analysis_dashboard/src/analysis_dashboard/store_reader.py
-            # parents[0] = analysis_dashboard/  (package dir)
-            # parents[1] = src/
-            # parents[2] = analysis_dashboard/  (package root)
-            # parents[3] = repo root            (where mcp_agent_log.db lives)
             _repo_root = Path(__file__).resolve().parents[3]
-            db_path = _repo_root / "mcp_agent_log.db"
+            db_path    = _repo_root / "mcp_agent_log.db"
         _reader_instance = SharedLogStoreReader(db_path)
         logger.info("SharedLogStoreReader initialised at %s", db_path)
     return _reader_instance
