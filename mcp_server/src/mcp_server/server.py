@@ -362,11 +362,11 @@ def _expand_queries(query: str) -> list[str]:
     return variants[:3]
 
 def _score_against_queries(text: str, keywords: list[str], queries: list[str]) -> float:
-    combined = (text + " " + " ".join(keywords)).lower()
+    combined_words = set((text + " " + " ".join(keywords)).lower().split())
     query_terms = set()
     for q in queries:
         query_terms.update(w for w in q.lower().split() if len(w) > 2)
-    hits = sum(1 for term in query_terms if term in combined)
+    hits = len(query_terms & combined_words)
     return hits / max(len(query_terms), 1)
 
 def _hierarchical_retrieve(queries: list[str]) -> list[dict[str, Any]]:
@@ -403,30 +403,87 @@ def _hierarchical_retrieve(queries: list[str]) -> list[dict[str, Any]]:
     logger.info("Hierarchical retrieval yielded %d leaf candidates.", len(leaf_candidates))
     return leaf_candidates
 
-def _tot_evaluate(chunks: list[dict[str, Any]], queries: list[str]) -> list[dict[str, Any]]:
-    accepted = []
-    query_terms = set(w for q in queries for w in q.lower().split() if len(w) > 3)
+TOT_BRANCHES = 3  # candidate thoughts generated per chunk
+
+
+class ToTThought(BaseModel):
+    reasoning: str = Field(description="A short line of reasoning about this chunk's relevance.")
+
+
+class ToTVerdict(BaseModel):
+    best_thought_index: int = Field(description="Index (0-based) of the strongest reasoning line.")
+    is_relevant: bool = Field(description="Final verdict based on the strongest reasoning line.")
+
+
+async def _tot_evaluate(
+    chunks: list[dict[str, Any]],
+    queries: list[str],
+    ctx: Context = None,
+) -> list[dict[str, Any]]:
+    """
+    Tree-of-Thought chunk evaluation: generate several independent lines of
+    reasoning (thoughts) per chunk, then use a separate evaluator call to
+    pick the strongest one and decide relevance from it.
+    """
+    if not chunks or ctx is None:
+        return [c for c in chunks if c["_score"] >= 0.15]
+
+    query_block = "\n".join(f"- {q}" for q in queries)
+    accepted: list[dict[str, Any]] = []
 
     for chunk in chunks:
-        content_lower = (chunk.get("content", "") + " " + chunk.get("title", "")).lower()
+        thoughts = []
+        for _ in range(TOT_BRANCHES):
+            prompt = f"""
+            Queries:
+            {query_block}
 
-        overlap = sum(1 for t in query_terms if t in content_lower)
-        vote_a  = overlap >= max(1, len(query_terms) * 0.15)
-        title_lower = chunk.get("title", "").lower()
-        vote_b  = any(t in title_lower for t in query_terms) or chunk["_score"] >= 0.12
-        vote_c  = len(chunk.get("content", "")) >= 60 and len(chunk.get("keywords", [])) >= 2
+            Chunk: {chunk.get('title', '')}
+            {chunk.get('content', '')}
 
-        votes   = sum([vote_a, vote_b, vote_c])
-        verdict = "ACCEPT" if votes >= 2 else "REJECT"
-        
-        # CHANGED: Log directly to the standard server logger right where it happens!
-        logger.debug(
-            f"ToT chunk '{chunk['id']}' [{chunk['_domain']}/{chunk['_section']}]: "
-            f"A={vote_a} B={vote_b} C={vote_c} → {votes}/3 → {verdict}"
-        )
-        
-        if votes >= 2:
-            accepted.append(chunk)
+            In one sentence, reason about whether this chunk helps answer
+            the queries. Respond ONLY with JSON matching:
+            {json.dumps(ToTThought.model_json_schema(), indent=2)}
+            """
+            try:
+                result = await ctx.sample(prompt, max_tokens=100)
+                text = result.text.strip().strip("```json").strip("```").strip()
+                thoughts.append(ToTThought.model_validate_json(text).reasoning)
+            except Exception as exc:
+                logger.warning("ToT thought generation failed: %s", exc)
+
+        if not thoughts:
+            if chunk["_score"] >= 0.15:
+                accepted.append(chunk)
+            continue
+
+        thoughts_block = "\n".join(f"{i}: {t}" for i, t in enumerate(thoughts))
+        eval_prompt = f"""
+        Here are independent reasoning attempts about whether a chunk is
+        relevant to these queries:
+        {query_block}
+
+        Reasoning attempts:
+        {thoughts_block}
+
+        Pick the strongest reasoning attempt and give a final verdict.
+        Respond ONLY with JSON matching:
+        {json.dumps(ToTVerdict.model_json_schema(), indent=2)}
+        """
+        try:
+            result = await ctx.sample(eval_prompt, max_tokens=100)
+            text = result.text.strip().strip("```json").strip("```").strip()
+            verdict = ToTVerdict.model_validate_json(text)
+            await ctx.log(
+                level="debug",
+                message=f"ToT chunk '{chunk['id']}': best_thought=\"{thoughts[verdict.best_thought_index]}\" → relevant={verdict.is_relevant}",
+            )
+            if verdict.is_relevant:
+                accepted.append(chunk)
+        except Exception as exc:
+            logger.warning("ToT evaluation failed for chunk '%s': %s", chunk["id"], exc)
+            if chunk["_score"] >= 0.15:
+                accepted.append(chunk)
 
     logger.info("ToT accepted %d/%d chunks.", len(accepted), len(chunks))
     return accepted
@@ -481,10 +538,7 @@ async def query_knowledge(query: str, ctx: Context = None) -> str:
     logger.info(msg)
     if ctx: await ctx.info(msg)
 
-    tot_log: list[str] = []
-    accepted = _tot_evaluate(candidates, queries, tot_log)
-    for log_msg in tot_log:
-        if ctx: await ctx.log(level="debug", message=log_msg)
+    accepted = await _tot_evaluate(candidates, queries, ctx)
 
     msg = f"ToT accepted {len(accepted)}/{len(candidates)} chunks."
     logger.info(msg)

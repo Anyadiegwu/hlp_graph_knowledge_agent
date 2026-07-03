@@ -1,15 +1,15 @@
 {
   "audit_metadata": {
-    "session_id": "7fe88b18-7e3e-4935-9c89-7e974bea983a",
+    "session_id": "5eb8446d-d1d7-466f-b009-37a0a80f9f8b",
     "entries_analysed": 20,
     "text_entries_for_lime": 0,
-    "structured_entries_for_shap": 5
+    "structured_entries_for_shap": 4
   },
   "graph_context": {
     "nodes": [],
     "relationships": [],
     "cypher_used": "MATCH (s:Session {session_id: $anchor_id}) OPTIONAL MATCH path1 = (s)-[:TRIGGERED]->(a:AgentAction) OPTIONAL MATCH path2 = (a)-[:ROUTED_TO]->(m:MCPServerCall) OPTIONAL MATCH path3 = (m)-[:DEPENDS_ON*1..2]->(m2:MCPServerCall) RETURN s, collect(DISTINCT a) AS agent_actions, collect(DISTINCT m) AS mcp_calls, collect(DISTINCT m2) AS chained_calls",
-    "context_summary": "Neo4j Subgraph Context (anchor=7fe88b18-7e3e-4935-9c89-7e974bea983a, hop_depth=2):\n  Sessions found    : 0\n  AgentAction nodes : 0\n  MCPServerCall nodes: 0",
+    "context_summary": "Neo4j Subgraph Context (anchor=5eb8446d-d1d7-466f-b009-37a0a80f9f8b, hop_depth=2):\n  Sessions found    : 0\n  AgentAction nodes : 0\n  MCPServerCall nodes: 0",
     "node_counts": {
       "sessions": 0,
       "agent_actions": 0,
@@ -23,94 +23,78 @@
   },
   "shap_results": {
     "feature_contributions": {
-      "latency_ms": 0.4851,
-      "token_count": 0.4554,
-      "content_length": 0.4612
+      "latency_ms": 0.5727,
+      "token_count": 0.5425,
+      "content_length": 0.6117
     },
     "per_entry_shap": [
       {
-        "entry_id": 158,
+        "entry_id": 2,
         "interaction_type": "system_event",
         "is_anomalous": false,
-        "anomaly_score": 1.234,
+        "anomaly_score": 1.749,
         "shap_values": {
-          "latency_ms": 0.5885,
-          "token_count": 0.3468,
-          "content_length": 0.2987
+          "latency_ms": 0.4917,
+          "token_count": 0.4182,
+          "content_length": 0.8391
         },
         "feature_values": {
-          "latency_ms": 2634.03,
+          "latency_ms": 1786.95,
           "token_count": 0.0,
           "content_length": 126.0
         }
       },
       {
-        "entry_id": 164,
+        "entry_id": 10,
         "interaction_type": "resource_read",
         "is_anomalous": false,
-        "anomaly_score": 1.275,
+        "anomaly_score": 1.524,
         "shap_values": {
-          "latency_ms": 0.6207,
-          "token_count": 0.3423,
-          "content_length": 0.312
+          "latency_ms": 0.4471,
+          "token_count": 0.4408,
+          "content_length": 0.6362
         },
         "feature_values": {
-          "latency_ms": 2518.85,
+          "latency_ms": 2054.39,
           "token_count": 0.0,
-          "content_length": 99.0
+          "content_length": 1895.0
         }
       },
       {
-        "entry_id": 169,
-        "interaction_type": "sampling_response",
-        "is_anomalous": false,
-        "anomaly_score": 0.3114,
-        "shap_values": {
-          "latency_ms": 0.1348,
-          "token_count": 0.0633,
-          "content_length": 0.1133
-        },
-        "feature_values": {
-          "latency_ms": 5704.39,
-          "token_count": 81.0,
-          "content_length": 574.0
-        }
-      },
-      {
-        "entry_id": 172,
+        "entry_id": 15,
         "interaction_type": "sampling_response",
         "is_anomalous": true,
-        "anomaly_score": 3.3156,
+        "anomaly_score": 1.735,
         "shap_values": {
-          "latency_ms": 1.0092,
-          "token_count": 1.1485,
-          "content_length": 1.1579
+          "latency_ms": 1.3168,
+          "token_count": 0.0204,
+          "content_length": 0.3979
         },
         "feature_values": {
-          "latency_ms": 10093.21,
-          "token_count": 418.0,
-          "content_length": 3140.0
+          "latency_ms": 9442.03,
+          "token_count": 76.0,
+          "content_length": 588.0
         }
       },
       {
-        "entry_id": 176,
+        "entry_id": 18,
         "interaction_type": "sampling_response",
         "is_anomalous": false,
-        "anomaly_score": 0.8726,
+        "anomaly_score": 1.8995,
         "shap_values": {
-          "latency_ms": 0.0725,
-          "token_count": 0.3759,
-          "content_length": 0.4242
+          "latency_ms": 0.0353,
+          "token_count": 1.2907,
+          "content_length": 0.5736
         },
         "feature_values": {
-          "latency_ms": 4632.73,
-          "token_count": 8.0,
-          "content_length": 53.0
+          "latency_ms": 4834.85,
+          "token_count": 252.0,
+          "content_length": 1828.0
         }
       }
     ],
     "anomaly_count": 1,
-    "dominant_feature": "latency_ms",
+    "dominant_feature": "content_length",
     "method": "proxy_shap",
     "features_used": [
       "latency_ms",
@@ -118,6 +102,6 @@
       "content_length"
     ],
     "graph_context_used": true,
-    "total_entries": 5
+    "total_entries": 4
   }
 }

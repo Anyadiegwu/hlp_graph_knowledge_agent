@@ -4,8 +4,8 @@ A fault-tolerant, self-healing, and fully auditable multi-agent network built on
 
 The system is structured as a `uv` workspace monorepo containing three isolated packages:
 
-- **`mcp_server`** — FastMCP server exposing a Hierarchical CRAG knowledge tool, an MCP Sampling reflection tool, and a fault injection tool for resilience testing.
-- **`agent_client`** — LangChain ReAct agent with a three-layer resilience stack: `RunnableWithRetry`, `RunnableWithFallbacks`, and a hardcoded absolute fallback. Writes structured interaction logs to a SQLite vector store.
+- **`mcp_server`** — FastMCP server exposing a Hierarchical CRAG knowledge tool with Tree-of-Thought relevance grading, an MCP Sampling reflection tool, and a fault injection tool for resilience testing.
+- **`agent_client`** — LangChain ReAct agent with a three-tier LLM provider fallback (Gemini → Groq → local Ollama) and a three-layer runtime resilience stack: `RunnableWithRetry`, `RunnableWithFallbacks`, and a hardcoded absolute fallback. Writes structured interaction logs to a SQLite vector store.
 - **`analysis_dashboard`** — Edgeless LangGraph `StateGraph` analysis agent with proxy LIME/SHAP explainability engine and a Streamlit diagnostic interface.
 
 ---
@@ -47,7 +47,8 @@ hlp_graph_knowledge_agent/
 - Python 3.11+
 - [uv](https://docs.astral.sh/uv/) installed globally
 - A [Google Gemini API key](https://aistudio.google.com/) (primary LLM)
-- A [Groq API key](https://console.groq.com/) (fallback LLM + self-healing)
+- A [Groq API key](https://console.groq.com/) (secondary LLM fallback + self-healing)
+- [Ollama](https://ollama.com/) running locally with a pulled model (optional — only used as the final LLM fallback if neither `GEMINI_API_KEY` nor `GROQ_API_KEY` is configured; defaults to `llama3.2:3b`)
 - A [Neo4j Aura DB](https://console.neo4j.io/) free instance (graph features)
 - A [Tavily API key](https://tavily.com/) (optional — CRAG web fallback)
 
@@ -71,6 +72,8 @@ NEO4J_USERNAME=neo4j
 NEO4J_PASSWORD=your_neo4j_password_here
 TAVILY_API_KEY=your_tavily_api_key_here
 ```
+
+`GEMINI_API_KEY` and `GROQ_API_KEY` are both optional individually — if neither is set, the client falls back to a local Ollama model — but at least one of Gemini or Groq is strongly recommended for reliable output quality.
 
 ---
 
@@ -192,10 +195,36 @@ Live and historical counts of fallback activations, self-heal successes, and abs
 
 ---
 
+## CRAG Knowledge Retrieval & Tree-of-Thought Grading
+
+`query_knowledge` (in `mcp_server`) runs a Corrective RAG pipeline: expand the query into variants, retrieve candidate chunks hierarchically (domain → section → leaf), then grade each candidate for relevance before falling back to Tavily web search if internal knowledge is insufficient.
+
+Relevance grading is done via genuine Tree-of-Thought reasoning over MCP Sampling, not a static heuristic:
+
+1. **Branch** — for each candidate chunk, sample several independent one-sentence reasoning attempts ("thoughts") about whether the chunk helps answer the query.
+2. **Evaluate** — a separate sampling call reviews all generated thoughts together, picks the strongest one, and issues a final relevance verdict.
+3. **Decide** — the chunk is kept only if the evaluator's verdict says relevant.
+
+Chunks that survive grading, or web results if the internal KB scores below threshold, are assembled into the final CRAG response.
+
+---
+
 ## Resilience Architecture
 
-The agent client wraps every query in a three-layer resilience stack:
+Two independent resilience mechanisms exist in `agent_client`:
 
+**LLM provider fallback** (which model backs the agent at all):
+```
+Gemini (primary)
+      │ init/call fails
+      ▼
+Groq (secondary)
+      │ init/call fails
+      ▼
+Ollama (local, e.g. llama3.2:3b)
+```
+
+**Runtime resilience stack** (how a single query is protected once a model is selected):
 ```
 Primary Agent
       │
@@ -245,11 +274,11 @@ Located at `analysis_dashboard/src/analysis_dashboard/xai_engine.py`.
 Key packages per workspace package:
 
 **mcp_server**
-- `fastmcp`, `langchain-tavily`
+- `fastmcp`, `langchain-tavily`, `python-dotenv`, `pydantic`
 
 **agent_client**
-- `langchain`, `langchain-core`, `langchain-groq`, `langchain-google-genai`
-- `langchain-mcp-adapters`, `langgraph`, `tenacity`
+- `langchain`, `langchain-core`, `langchain-groq`, `langchain-google-genai`, `langchain-ollama`
+- `langchain-mcp-adapters`, `langgraph`, `langgraph-checkpoint-sqlite`, `mcp`
 - `pydantic`, `pydantic-settings`, `aiosqlite`
 
 **analysis_dashboard**

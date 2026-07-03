@@ -99,3 +99,37 @@
 [2026-06-29 00:04:40] [ANALYSIS_AGENT] [DEBUG] [ROUTE] synthesize_node → END
 [2026-06-29 00:04:40] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=synthesize_node routing=['synthesize_node → END']
 [2026-06-29 00:04:40] [ANALYSIS_AGENT] [INFO] Analysis query complete. steps=5 final_answer_len=4597
+[2026-07-03 20:45:28] [ANALYSIS_AGENT] [INFO] Analysis Agent log: C:\Users\Victor\My Files\Kodecamp\stage3\hlp_graph_knowledge_agent\analysis_agent.log
+[2026-07-03 20:45:28] [ANALYSIS_AGENT] [INFO] Edgeless StateGraph compiled. Nodes: ['initial_ingest_node', 'stats_node', 'search_node', 'xai_node', 'chart_node', 'synthesize_node']. Only hardcoded edge: START → initial_ingest_node.
+[2026-07-03 20:45:28] [ANALYSIS_AGENT] [INFO] Analysis agent (edgeless LangGraph) ready.
+[2026-07-03 20:45:28] [ANALYSIS_AGENT] [INFO] Analysis query: Run an explainability audit on the most recent session and show LIME and SHAP results
+[2026-07-03 20:45:28] [ANALYSIS_AGENT] [INFO] [initial_ingest_node] query='Run an explainability audit on the most recent session and show LIME and SHAP re' planned_route=['stats_node', 'search_node', 'xai_node', 'synthesize_node']
+[2026-07-03 20:45:28] [ANALYSIS_AGENT] [DEBUG] [ROUTE] initial_ingest_node → stats_node
+[2026-07-03 20:45:28] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=initial_ingest_node routing=['initial_ingest_node → stats_node']
+[2026-07-03 20:45:28] [ANALYSIS_AGENT] [INFO] [stats_node] Fetching log statistics.
+[2026-07-03 20:45:28] [ANALYSIS_AGENT] [INFO] get_log_statistics called.
+[2026-07-03 20:45:28] [ANALYSIS_AGENT] [INFO] Stats: total=87 sessions=1 errors=1
+[2026-07-03 20:45:28] [ANALYSIS_AGENT] [INFO] [stats_node] Stats fetched (1067 chars).
+[2026-07-03 20:45:28] [ANALYSIS_AGENT] [DEBUG] [ROUTE] stats_node → search_node
+[2026-07-03 20:45:28] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=stats_node routing=['stats_node → search_node']
+[2026-07-03 20:45:28] [ANALYSIS_AGENT] [INFO] [search_node] Running semantic log search.
+[2026-07-03 20:45:28] [ANALYSIS_AGENT] [INFO] semantic_log_search: query='Run an explainability audit on the most recent session and show LIME and SHAP re' k=15
+[2026-07-03 20:45:35] [ANALYSIS_AGENT] [INFO] semantic_log_search returned 15 results.
+[2026-07-03 20:45:35] [ANALYSIS_AGENT] [INFO] [search_node] Search returned (14054 chars).
+[2026-07-03 20:45:35] [ANALYSIS_AGENT] [DEBUG] [ROUTE] search_node → xai_node
+[2026-07-03 20:45:35] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=search_node routing=['search_node → xai_node']
+[2026-07-03 20:45:35] [ANALYSIS_AGENT] [INFO] [xai_node] Running explainability audit.
+[2026-07-03 20:45:35] [ANALYSIS_AGENT] [INFO] run_explainability_audit: session_id=5eb8446d-d1d7-466f-b009-37a0a80f9f8b trace_id=None top_k=20
+[2026-07-03 20:45:35] [ANALYSIS_AGENT] [INFO] Audit targeting 20 log entries.
+[2026-07-03 20:45:35] [ANALYSIS_AGENT] [INFO] fetch_neo4j_subgraph: session_id=5eb8446d-d1d7-466f-b009-37a0a80f9f8b trace_id=None hop_depth=2
+[2026-07-03 20:45:37] [ANALYSIS_AGENT] [WARNING] Neo4j connection failed — graph tools will report errors.
+[2026-07-03 20:45:51] [ANALYSIS_AGENT] [INFO] Audit report saved: C:\Users\Victor\My Files\Kodecamp\stage3\hlp_graph_knowledge_agent\explainability_audit_report.json
+[2026-07-03 20:45:51] [ANALYSIS_AGENT] [INFO] Explainability audit complete: {"status": "success", "session_audited": "5eb8446d-d1d7-466f-b009-37a0a80f9f8b", "entries_analysed": 20, "lime_tokens_scored": 0, "shap_features_scored": 3, "graph_context_nodes": {}, "report_path": "C:\\Users\\Victor\\My Files\\Kodecamp\\stage3\\hlp_graph_knowledge_agent\\explainability_audit_report.json"}
+[2026-07-03 20:45:51] [ANALYSIS_AGENT] [INFO] [xai_node] XAI audit returned (324 chars).
+[2026-07-03 20:45:51] [ANALYSIS_AGENT] [DEBUG] [ROUTE] xai_node → synthesize_node
+[2026-07-03 20:45:51] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=xai_node routing=['xai_node → synthesize_node']
+[2026-07-03 20:45:51] [ANALYSIS_AGENT] [INFO] [synthesize_node] Synthesising final answer.
+[2026-07-03 20:46:05] [ANALYSIS_AGENT] [INFO] [synthesize_node] Final answer (4163 chars).
+[2026-07-03 20:46:05] [ANALYSIS_AGENT] [DEBUG] [ROUTE] synthesize_node → END
+[2026-07-03 20:46:05] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=synthesize_node routing=['synthesize_node → END']
+[2026-07-03 20:46:05] [ANALYSIS_AGENT] [INFO] Analysis query complete. steps=5 final_answer_len=4163

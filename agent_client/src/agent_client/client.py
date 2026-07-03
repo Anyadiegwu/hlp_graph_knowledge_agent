@@ -441,7 +441,6 @@ _persist(
     embed=False,
 )
 
-
 async def sampling_callback(
     context: RequestContext,
     params: CreateMessageRequestParams,
@@ -451,6 +450,11 @@ async def sampling_callback(
 
     prompt_texts = []
     lc_messages  = []
+
+    if getattr(params, "systemPrompt", None):
+        lc_messages.append({"role": "system", "content": params.systemPrompt})
+        prompt_texts.append(f"[system] {params.systemPrompt}")
+
     for msg in params.messages:
         if hasattr(msg.content, "text"):
             text = msg.content.text
@@ -461,7 +465,7 @@ async def sampling_callback(
         else:
             text = str(msg.content)
         prompt_texts.append(text)
-        lc_messages.append(HumanMessage(content=text))
+        lc_messages.append({"role": getattr(msg, "role", "user"), "content": text})
 
     _persist(
         interaction_type=MCPInteractionType.SAMPLING_REQUEST,
@@ -519,7 +523,6 @@ async def sampling_callback(
         content=TextContent(type="text", text=response_text),
         model=model_used,
     )
-
 
 async def log_handler(
     params: LoggingMessageNotificationParams,

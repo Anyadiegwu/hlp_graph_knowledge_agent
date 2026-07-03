@@ -38,7 +38,6 @@ dependencies = [
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "python-dotenv" },
-    { name = "tenacity" },
 ]
 
 [package.metadata]
@@ -56,7 +55,6 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "pydantic-settings", specifier = ">=2.0.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
-    { name = "tenacity", specifier = ">=8.2.0" },
 ]
 
 [[package]]
@@ -257,7 +255,6 @@ dependencies = [
     { name = "scikit-learn" },
     { name = "seaborn" },
     { name = "streamlit" },
-    { name = "tenacity" },
 ]
 
 [package.metadata]
@@ -278,7 +275,6 @@ requires-dist = [
     { name = "scikit-learn", specifier = ">=1.4.0" },
     { name = "seaborn", specifier = ">=0.13.0" },
     { name = "streamlit", specifier = ">=1.35.0" },
-    { name = "tenacity", specifier = ">=9.1.4" },
 ]
 
 [[package]]
@@ -1894,7 +1890,6 @@ dependencies = [
     { name = "langchain-tavily" },
     { name = "pydantic" },
     { name = "python-dotenv" },
-    { name = "tenacity" },
 ]
 
 [package.metadata]
@@ -1903,7 +1898,6 @@ requires-dist = [
     { name = "langchain-tavily", specifier = ">=0.1.0" },
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
-    { name = "tenacity", specifier = ">=9.1.4" },
 ]
 
 [[package]]
