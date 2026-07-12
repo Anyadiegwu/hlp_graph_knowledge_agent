@@ -1,135 +1,177 @@
-[2026-06-28 23:57:56] [ANALYSIS_AGENT] [INFO] Analysis Agent log: C:\Users\Victor\My Files\Kodecamp\stage3\hlp_graph_knowledge_agent\analysis_agent.log
-[2026-06-28 23:57:56] [ANALYSIS_AGENT] [INFO] Edgeless StateGraph compiled. Nodes: ['initial_ingest_node', 'stats_node', 'search_node', 'xai_node', 'chart_node', 'synthesize_node']. Only hardcoded edge: START → initial_ingest_node.
-[2026-06-28 23:57:56] [ANALYSIS_AGENT] [INFO] Analysis agent (edgeless LangGraph) ready.
-[2026-06-28 23:57:56] [ANALYSIS_AGENT] [INFO] Analysis query: Run an explainability audit on the most recent session and show LIME and SHAP results.
-[2026-06-28 23:57:56] [ANALYSIS_AGENT] [INFO] [initial_ingest_node] query='Run an explainability audit on the most recent session and show LIME and SHAP re' planned_route=['stats_node', 'search_node', 'xai_node', 'synthesize_node']
-[2026-06-28 23:57:56] [ANALYSIS_AGENT] [DEBUG] [ROUTE] initial_ingest_node → stats_node
-[2026-06-28 23:57:56] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=initial_ingest_node routing=['initial_ingest_node → stats_node']
-[2026-06-28 23:57:56] [ANALYSIS_AGENT] [INFO] [stats_node] Fetching log statistics.
-[2026-06-28 23:57:56] [ANALYSIS_AGENT] [INFO] get_log_statistics called.
-[2026-06-28 23:57:56] [ANALYSIS_AGENT] [INFO] Stats: total=206 sessions=3 errors=4
-[2026-06-28 23:57:56] [ANALYSIS_AGENT] [INFO] [stats_node] Stats fetched (1268 chars).
-[2026-06-28 23:57:56] [ANALYSIS_AGENT] [DEBUG] [ROUTE] stats_node → search_node
-[2026-06-28 23:57:56] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=stats_node routing=['stats_node → search_node']
-[2026-06-28 23:57:56] [ANALYSIS_AGENT] [INFO] [search_node] Running semantic log search.
-[2026-06-28 23:57:56] [ANALYSIS_AGENT] [INFO] semantic_log_search: query='Run an explainability audit on the most recent session and show LIME and SHAP re' k=15
-[2026-06-28 23:58:07] [ANALYSIS_AGENT] [INFO] semantic_log_search returned 15 results.
-[2026-06-28 23:58:07] [ANALYSIS_AGENT] [INFO] [search_node] Search returned (22096 chars).
-[2026-06-28 23:58:07] [ANALYSIS_AGENT] [DEBUG] [ROUTE] search_node → xai_node
-[2026-06-28 23:58:07] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=search_node routing=['search_node → xai_node']
-[2026-06-28 23:58:07] [ANALYSIS_AGENT] [INFO] [xai_node] Running explainability audit.
-[2026-06-28 23:58:07] [ANALYSIS_AGENT] [INFO] run_explainability_audit: session_id=7fe88b18-7e3e-4935-9c89-7e974bea983a trace_id=None top_k=20
-[2026-06-28 23:58:07] [ANALYSIS_AGENT] [INFO] Audit targeting 20 log entries.
-[2026-06-28 23:58:07] [ANALYSIS_AGENT] [INFO] fetch_neo4j_subgraph: session_id=7fe88b18-7e3e-4935-9c89-7e974bea983a trace_id=None hop_depth=2
-[2026-06-28 23:58:12] [ANALYSIS_AGENT] [INFO] fetch_neo4j_subgraph: 0 nodes extracted.
-[2026-06-28 23:59:18] [ANALYSIS_AGENT] [INFO] Audit report saved: C:\Users\Victor\My Files\Kodecamp\stage3\hlp_graph_knowledge_agent\explainability_audit_report.json
-[2026-06-28 23:59:18] [ANALYSIS_AGENT] [INFO] Explainability audit complete: {"status": "success", "session_audited": "7fe88b18-7e3e-4935-9c89-7e974bea983a", "entries_analysed": 20, "lime_tokens_scored": 0, "shap_features_scored": 3, "graph_context_nodes": {"sessions": 0, "agent_actions": 0, "mcp_calls": 0}, "report_path": "C:\\Users\\Victor\\My Files\\Kodecamp\\stage3\\hlp_graph_knowledge_agent\\explainability_audit_report.json"}
-[2026-06-28 23:59:18] [ANALYSIS_AGENT] [INFO] [xai_node] XAI audit returned (389 chars).
-[2026-06-28 23:59:18] [ANALYSIS_AGENT] [DEBUG] [ROUTE] xai_node → synthesize_node
-[2026-06-28 23:59:18] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=xai_node routing=['xai_node → synthesize_node']
-[2026-06-28 23:59:18] [ANALYSIS_AGENT] [INFO] [synthesize_node] Synthesising final answer.
-[2026-06-28 23:59:59] [ANALYSIS_AGENT] [ERROR] [synthesize_node] LLM synthesis failed: Error calling model 'gemini-2.5-flash' (RESOURCE_EXHAUSTED): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash\nPlease retry in 909.073941ms.', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.Help', 'links': [{'description': 'Learn more about Gemini API quotas', 'url': 'https://ai.google.dev/gemini-api/docs/rate-limits'}]}, {'@type': 'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerDayPerProjectPerModel-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-2.5-flash'}, 'quotaValue': '20'}]}, {'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '0s'}]}}
-[2026-06-28 23:59:59] [ANALYSIS_AGENT] [INFO] [synthesize_node] Final answer (2089 chars).
-[2026-06-28 23:59:59] [ANALYSIS_AGENT] [DEBUG] [ROUTE] synthesize_node → END
-[2026-06-28 23:59:59] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=synthesize_node routing=['synthesize_node → END']
-[2026-06-28 23:59:59] [ANALYSIS_AGENT] [INFO] Analysis query complete. steps=5 final_answer_len=2089
-[2026-06-29 00:01:07] [ANALYSIS_AGENT] [INFO] Analysis query: Run an explainability audit on the most recent session and show LIME and SHAP results.
-[2026-06-29 00:01:07] [ANALYSIS_AGENT] [INFO] [initial_ingest_node] query='Run an explainability audit on the most recent session and show LIME and SHAP re' planned_route=['stats_node', 'search_node', 'xai_node', 'synthesize_node']
-[2026-06-29 00:01:07] [ANALYSIS_AGENT] [DEBUG] [ROUTE] initial_ingest_node → stats_node
-[2026-06-29 00:01:07] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=initial_ingest_node routing=['initial_ingest_node → stats_node']
-[2026-06-29 00:01:07] [ANALYSIS_AGENT] [INFO] [stats_node] Fetching log statistics.
-[2026-06-29 00:01:07] [ANALYSIS_AGENT] [INFO] get_log_statistics called.
-[2026-06-29 00:01:07] [ANALYSIS_AGENT] [INFO] Stats: total=206 sessions=3 errors=4
-[2026-06-29 00:01:07] [ANALYSIS_AGENT] [INFO] [stats_node] Stats fetched (1268 chars).
-[2026-06-29 00:01:07] [ANALYSIS_AGENT] [DEBUG] [ROUTE] stats_node → search_node
-[2026-06-29 00:01:07] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=stats_node routing=['stats_node → search_node']
-[2026-06-29 00:01:07] [ANALYSIS_AGENT] [INFO] [search_node] Running semantic log search.
-[2026-06-29 00:01:07] [ANALYSIS_AGENT] [INFO] semantic_log_search: query='Run an explainability audit on the most recent session and show LIME and SHAP re' k=15
-[2026-06-29 00:01:08] [ANALYSIS_AGENT] [INFO] semantic_log_search returned 15 results.
-[2026-06-29 00:01:08] [ANALYSIS_AGENT] [INFO] [search_node] Search returned (22096 chars).
-[2026-06-29 00:01:08] [ANALYSIS_AGENT] [DEBUG] [ROUTE] search_node → xai_node
-[2026-06-29 00:01:08] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=search_node routing=['search_node → xai_node']
-[2026-06-29 00:01:08] [ANALYSIS_AGENT] [INFO] [xai_node] Running explainability audit.
-[2026-06-29 00:01:08] [ANALYSIS_AGENT] [INFO] run_explainability_audit: session_id=7fe88b18-7e3e-4935-9c89-7e974bea983a trace_id=None top_k=20
-[2026-06-29 00:01:08] [ANALYSIS_AGENT] [INFO] Audit targeting 20 log entries.
-[2026-06-29 00:01:08] [ANALYSIS_AGENT] [INFO] fetch_neo4j_subgraph: session_id=7fe88b18-7e3e-4935-9c89-7e974bea983a trace_id=None hop_depth=2
-[2026-06-29 00:01:08] [ANALYSIS_AGENT] [INFO] fetch_neo4j_subgraph: 0 nodes extracted.
-[2026-06-29 00:01:09] [ANALYSIS_AGENT] [INFO] Audit report saved: C:\Users\Victor\My Files\Kodecamp\stage3\hlp_graph_knowledge_agent\explainability_audit_report.json
-[2026-06-29 00:01:09] [ANALYSIS_AGENT] [INFO] Explainability audit complete: {"status": "success", "session_audited": "7fe88b18-7e3e-4935-9c89-7e974bea983a", "entries_analysed": 20, "lime_tokens_scored": 0, "shap_features_scored": 3, "graph_context_nodes": {"sessions": 0, "agent_actions": 0, "mcp_calls": 0}, "report_path": "C:\\Users\\Victor\\My Files\\Kodecamp\\stage3\\hlp_graph_knowledge_agent\\explainability_audit_report.json"}
-[2026-06-29 00:01:09] [ANALYSIS_AGENT] [INFO] [xai_node] XAI audit returned (389 chars).
-[2026-06-29 00:01:09] [ANALYSIS_AGENT] [DEBUG] [ROUTE] xai_node → synthesize_node
-[2026-06-29 00:01:09] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=xai_node routing=['xai_node → synthesize_node']
-[2026-06-29 00:01:09] [ANALYSIS_AGENT] [INFO] [synthesize_node] Synthesising final answer.
-[2026-06-29 00:01:46] [ANALYSIS_AGENT] [ERROR] [synthesize_node] LLM synthesis failed: Error calling model 'gemini-2.5-flash' (RESOURCE_EXHAUSTED): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash\nPlease retry in 13.995131885s.', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.Help', 'links': [{'description': 'Learn more about Gemini API quotas', 'url': 'https://ai.google.dev/gemini-api/docs/rate-limits'}]}, {'@type': 'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerDayPerProjectPerModel-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-2.5-flash'}, 'quotaValue': '20'}]}, {'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '13s'}]}}
-[2026-06-29 00:01:46] [ANALYSIS_AGENT] [INFO] [synthesize_node] Final answer (2091 chars).
-[2026-06-29 00:01:46] [ANALYSIS_AGENT] [DEBUG] [ROUTE] synthesize_node → END
-[2026-06-29 00:01:46] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=synthesize_node routing=['synthesize_node → END']
-[2026-06-29 00:01:46] [ANALYSIS_AGENT] [INFO] Analysis query complete. steps=5 final_answer_len=2091
-[2026-06-29 00:04:07] [ANALYSIS_AGENT] [INFO] Analysis Agent log: C:\Users\Victor\My Files\Kodecamp\stage3\hlp_graph_knowledge_agent\analysis_agent.log
-[2026-06-29 00:04:07] [ANALYSIS_AGENT] [INFO] Edgeless StateGraph compiled. Nodes: ['initial_ingest_node', 'stats_node', 'search_node', 'xai_node', 'chart_node', 'synthesize_node']. Only hardcoded edge: START → initial_ingest_node.
-[2026-06-29 00:04:07] [ANALYSIS_AGENT] [INFO] Analysis agent (edgeless LangGraph) ready.
-[2026-06-29 00:04:07] [ANALYSIS_AGENT] [INFO] Analysis query: Run an explainability audit on the most recent session and show LIME and SHAP results.
-[2026-06-29 00:04:07] [ANALYSIS_AGENT] [INFO] [initial_ingest_node] query='Run an explainability audit on the most recent session and show LIME and SHAP re' planned_route=['stats_node', 'search_node', 'xai_node', 'synthesize_node']
-[2026-06-29 00:04:07] [ANALYSIS_AGENT] [DEBUG] [ROUTE] initial_ingest_node → stats_node
-[2026-06-29 00:04:07] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=initial_ingest_node routing=['initial_ingest_node → stats_node']
-[2026-06-29 00:04:07] [ANALYSIS_AGENT] [INFO] [stats_node] Fetching log statistics.
-[2026-06-29 00:04:07] [ANALYSIS_AGENT] [INFO] get_log_statistics called.
-[2026-06-29 00:04:07] [ANALYSIS_AGENT] [INFO] Stats: total=206 sessions=3 errors=4
-[2026-06-29 00:04:07] [ANALYSIS_AGENT] [INFO] [stats_node] Stats fetched (1268 chars).
-[2026-06-29 00:04:07] [ANALYSIS_AGENT] [DEBUG] [ROUTE] stats_node → search_node
-[2026-06-29 00:04:07] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=stats_node routing=['stats_node → search_node']
-[2026-06-29 00:04:07] [ANALYSIS_AGENT] [INFO] [search_node] Running semantic log search.
-[2026-06-29 00:04:07] [ANALYSIS_AGENT] [INFO] semantic_log_search: query='Run an explainability audit on the most recent session and show LIME and SHAP re' k=15
-[2026-06-29 00:04:17] [ANALYSIS_AGENT] [INFO] semantic_log_search returned 15 results.
-[2026-06-29 00:04:17] [ANALYSIS_AGENT] [INFO] [search_node] Search returned (22096 chars).
-[2026-06-29 00:04:17] [ANALYSIS_AGENT] [DEBUG] [ROUTE] search_node → xai_node
-[2026-06-29 00:04:17] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=search_node routing=['search_node → xai_node']
-[2026-06-29 00:04:17] [ANALYSIS_AGENT] [INFO] [xai_node] Running explainability audit.
-[2026-06-29 00:04:17] [ANALYSIS_AGENT] [INFO] run_explainability_audit: session_id=7fe88b18-7e3e-4935-9c89-7e974bea983a trace_id=None top_k=20
-[2026-06-29 00:04:17] [ANALYSIS_AGENT] [INFO] Audit targeting 20 log entries.
-[2026-06-29 00:04:18] [ANALYSIS_AGENT] [INFO] fetch_neo4j_subgraph: session_id=7fe88b18-7e3e-4935-9c89-7e974bea983a trace_id=None hop_depth=2
-[2026-06-29 00:04:18] [ANALYSIS_AGENT] [INFO] fetch_neo4j_subgraph: 0 nodes extracted.
-[2026-06-29 00:04:26] [ANALYSIS_AGENT] [INFO] Audit report saved: C:\Users\Victor\My Files\Kodecamp\stage3\hlp_graph_knowledge_agent\explainability_audit_report.json
-[2026-06-29 00:04:26] [ANALYSIS_AGENT] [INFO] Explainability audit complete: {"status": "success", "session_audited": "7fe88b18-7e3e-4935-9c89-7e974bea983a", "entries_analysed": 20, "lime_tokens_scored": 0, "shap_features_scored": 3, "graph_context_nodes": {"sessions": 0, "agent_actions": 0, "mcp_calls": 0}, "report_path": "C:\\Users\\Victor\\My Files\\Kodecamp\\stage3\\hlp_graph_knowledge_agent\\explainability_audit_report.json"}
-[2026-06-29 00:04:26] [ANALYSIS_AGENT] [INFO] [xai_node] XAI audit returned (389 chars).
-[2026-06-29 00:04:26] [ANALYSIS_AGENT] [DEBUG] [ROUTE] xai_node → synthesize_node
-[2026-06-29 00:04:26] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=xai_node routing=['xai_node → synthesize_node']
-[2026-06-29 00:04:26] [ANALYSIS_AGENT] [INFO] [synthesize_node] Synthesising final answer.
-[2026-06-29 00:04:40] [ANALYSIS_AGENT] [INFO] [synthesize_node] Final answer (4597 chars).
-[2026-06-29 00:04:40] [ANALYSIS_AGENT] [DEBUG] [ROUTE] synthesize_node → END
-[2026-06-29 00:04:40] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=synthesize_node routing=['synthesize_node → END']
-[2026-06-29 00:04:40] [ANALYSIS_AGENT] [INFO] Analysis query complete. steps=5 final_answer_len=4597
-[2026-07-03 20:45:28] [ANALYSIS_AGENT] [INFO] Analysis Agent log: C:\Users\Victor\My Files\Kodecamp\stage3\hlp_graph_knowledge_agent\analysis_agent.log
-[2026-07-03 20:45:28] [ANALYSIS_AGENT] [INFO] Edgeless StateGraph compiled. Nodes: ['initial_ingest_node', 'stats_node', 'search_node', 'xai_node', 'chart_node', 'synthesize_node']. Only hardcoded edge: START → initial_ingest_node.
-[2026-07-03 20:45:28] [ANALYSIS_AGENT] [INFO] Analysis agent (edgeless LangGraph) ready.
-[2026-07-03 20:45:28] [ANALYSIS_AGENT] [INFO] Analysis query: Run an explainability audit on the most recent session and show LIME and SHAP results
-[2026-07-03 20:45:28] [ANALYSIS_AGENT] [INFO] [initial_ingest_node] query='Run an explainability audit on the most recent session and show LIME and SHAP re' planned_route=['stats_node', 'search_node', 'xai_node', 'synthesize_node']
-[2026-07-03 20:45:28] [ANALYSIS_AGENT] [DEBUG] [ROUTE] initial_ingest_node → stats_node
-[2026-07-03 20:45:28] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=initial_ingest_node routing=['initial_ingest_node → stats_node']
-[2026-07-03 20:45:28] [ANALYSIS_AGENT] [INFO] [stats_node] Fetching log statistics.
-[2026-07-03 20:45:28] [ANALYSIS_AGENT] [INFO] get_log_statistics called.
-[2026-07-03 20:45:28] [ANALYSIS_AGENT] [INFO] Stats: total=87 sessions=1 errors=1
-[2026-07-03 20:45:28] [ANALYSIS_AGENT] [INFO] [stats_node] Stats fetched (1067 chars).
-[2026-07-03 20:45:28] [ANALYSIS_AGENT] [DEBUG] [ROUTE] stats_node → search_node
-[2026-07-03 20:45:28] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=stats_node routing=['stats_node → search_node']
-[2026-07-03 20:45:28] [ANALYSIS_AGENT] [INFO] [search_node] Running semantic log search.
-[2026-07-03 20:45:28] [ANALYSIS_AGENT] [INFO] semantic_log_search: query='Run an explainability audit on the most recent session and show LIME and SHAP re' k=15
-[2026-07-03 20:45:35] [ANALYSIS_AGENT] [INFO] semantic_log_search returned 15 results.
-[2026-07-03 20:45:35] [ANALYSIS_AGENT] [INFO] [search_node] Search returned (14054 chars).
-[2026-07-03 20:45:35] [ANALYSIS_AGENT] [DEBUG] [ROUTE] search_node → xai_node
-[2026-07-03 20:45:35] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=search_node routing=['search_node → xai_node']
-[2026-07-03 20:45:35] [ANALYSIS_AGENT] [INFO] [xai_node] Running explainability audit.
-[2026-07-03 20:45:35] [ANALYSIS_AGENT] [INFO] run_explainability_audit: session_id=5eb8446d-d1d7-466f-b009-37a0a80f9f8b trace_id=None top_k=20
-[2026-07-03 20:45:35] [ANALYSIS_AGENT] [INFO] Audit targeting 20 log entries.
-[2026-07-03 20:45:35] [ANALYSIS_AGENT] [INFO] fetch_neo4j_subgraph: session_id=5eb8446d-d1d7-466f-b009-37a0a80f9f8b trace_id=None hop_depth=2
-[2026-07-03 20:45:37] [ANALYSIS_AGENT] [WARNING] Neo4j connection failed — graph tools will report errors.
-[2026-07-03 20:45:51] [ANALYSIS_AGENT] [INFO] Audit report saved: C:\Users\Victor\My Files\Kodecamp\stage3\hlp_graph_knowledge_agent\explainability_audit_report.json
-[2026-07-03 20:45:51] [ANALYSIS_AGENT] [INFO] Explainability audit complete: {"status": "success", "session_audited": "5eb8446d-d1d7-466f-b009-37a0a80f9f8b", "entries_analysed": 20, "lime_tokens_scored": 0, "shap_features_scored": 3, "graph_context_nodes": {}, "report_path": "C:\\Users\\Victor\\My Files\\Kodecamp\\stage3\\hlp_graph_knowledge_agent\\explainability_audit_report.json"}
-[2026-07-03 20:45:51] [ANALYSIS_AGENT] [INFO] [xai_node] XAI audit returned (324 chars).
-[2026-07-03 20:45:51] [ANALYSIS_AGENT] [DEBUG] [ROUTE] xai_node → synthesize_node
-[2026-07-03 20:45:51] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=xai_node routing=['xai_node → synthesize_node']
-[2026-07-03 20:45:51] [ANALYSIS_AGENT] [INFO] [synthesize_node] Synthesising final answer.
-[2026-07-03 20:46:05] [ANALYSIS_AGENT] [INFO] [synthesize_node] Final answer (4163 chars).
-[2026-07-03 20:46:05] [ANALYSIS_AGENT] [DEBUG] [ROUTE] synthesize_node → END
-[2026-07-03 20:46:05] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=synthesize_node routing=['synthesize_node → END']
-[2026-07-03 20:46:05] [ANALYSIS_AGENT] [INFO] Analysis query complete. steps=5 final_answer_len=4163
+[2026-07-12 21:23:42] [ANALYSIS_AGENT] [INFO] Analysis Agent log: C:\Users\Victor\My Files\Kodecamp\stage3\hlp_graph_knowledge_agent\analysis_agent.log
+[2026-07-12 21:23:42] [ANALYSIS_AGENT] [INFO] Edgeless StateGraph compiled. Nodes: ['initial_ingest_node', 'stats_node', 'search_node', 'xai_node', 'chart_node', 'synthesize_node']. Only hardcoded edge: START → initial_ingest_node.
+[2026-07-12 21:23:42] [ANALYSIS_AGENT] [INFO] Analysis agent (edgeless LangGraph) ready.
+[2026-07-12 21:23:42] [ANALYSIS_AGENT] [INFO] Analysis query: Run an explainability audit on the most recent session and show the LIME and SHAP results
+[2026-07-12 21:23:42] [ANALYSIS_AGENT] [INFO] [initial_ingest_node] query='Run an explainability audit on the most recent session and show the LIME and SHA' planned_route=['stats_node', 'search_node', 'xai_node', 'synthesize_node']
+[2026-07-12 21:23:42] [ANALYSIS_AGENT] [DEBUG] [ROUTE] initial_ingest_node → stats_node
+[2026-07-12 21:23:42] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=initial_ingest_node routing=['initial_ingest_node → stats_node']
+[2026-07-12 21:23:42] [ANALYSIS_AGENT] [INFO] [stats_node] Fetching log statistics.
+[2026-07-12 21:23:42] [ANALYSIS_AGENT] [INFO] get_log_statistics called.
+[2026-07-12 21:23:48] [ANALYSIS_AGENT] [INFO] Stats: total=1952 sessions=13 errors=19
+[2026-07-12 21:23:48] [ANALYSIS_AGENT] [INFO] [stats_node] Stats fetched (1612 chars).
+[2026-07-12 21:23:48] [ANALYSIS_AGENT] [DEBUG] [ROUTE] stats_node → search_node
+[2026-07-12 21:23:48] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=stats_node routing=['stats_node → search_node']
+[2026-07-12 21:23:48] [ANALYSIS_AGENT] [INFO] [search_node] Running semantic log search.
+[2026-07-12 21:23:48] [ANALYSIS_AGENT] [INFO] semantic_log_search: query='Run an explainability audit on the most recent session and show the LIME and SHA' k=15
+[2026-07-12 21:27:19] [ANALYSIS_AGENT] [INFO] Analysis Agent log: C:\Users\Victor\My Files\Kodecamp\stage3\hlp_graph_knowledge_agent\analysis_agent.log
+[2026-07-12 21:27:19] [ANALYSIS_AGENT] [INFO] Edgeless StateGraph compiled. Nodes: ['initial_ingest_node', 'stats_node', 'search_node', 'xai_node', 'chart_node', 'synthesize_node']. Only hardcoded edge: START → initial_ingest_node.
+[2026-07-12 21:27:19] [ANALYSIS_AGENT] [INFO] Analysis agent (edgeless LangGraph) ready.
+[2026-07-12 21:27:19] [ANALYSIS_AGENT] [INFO] Analysis query: Run an explainability audit on the most recent session and show the LIME and SHAP results
+[2026-07-12 21:27:19] [ANALYSIS_AGENT] [INFO] [initial_ingest_node] query='Run an explainability audit on the most recent session and show the LIME and SHA' planned_route=['stats_node', 'search_node', 'xai_node', 'synthesize_node']
+[2026-07-12 21:27:19] [ANALYSIS_AGENT] [DEBUG] [ROUTE] initial_ingest_node → stats_node
+[2026-07-12 21:27:19] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=initial_ingest_node routing=['initial_ingest_node → stats_node']
+[2026-07-12 21:27:19] [ANALYSIS_AGENT] [INFO] [stats_node] Fetching log statistics.
+[2026-07-12 21:27:19] [ANALYSIS_AGENT] [INFO] get_log_statistics called.
+[2026-07-12 21:27:26] [ANALYSIS_AGENT] [INFO] Stats: total=1952 sessions=13 errors=19
+[2026-07-12 21:27:26] [ANALYSIS_AGENT] [INFO] [stats_node] Stats fetched (1612 chars).
+[2026-07-12 21:27:26] [ANALYSIS_AGENT] [DEBUG] [ROUTE] stats_node → search_node
+[2026-07-12 21:27:26] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=stats_node routing=['stats_node → search_node']
+[2026-07-12 21:27:26] [ANALYSIS_AGENT] [INFO] [search_node] Running semantic log search.
+[2026-07-12 21:27:26] [ANALYSIS_AGENT] [INFO] semantic_log_search: query='Run an explainability audit on the most recent session and show the LIME and SHA' k=15
+[2026-07-12 21:34:03] [ANALYSIS_AGENT] [INFO] Analysis Agent log: C:\Users\Victor\My Files\Kodecamp\stage3\hlp_graph_knowledge_agent\analysis_agent.log
+[2026-07-12 21:34:03] [ANALYSIS_AGENT] [INFO] Edgeless StateGraph compiled. Nodes: ['initial_ingest_node', 'stats_node', 'search_node', 'xai_node', 'chart_node', 'synthesize_node']. Only hardcoded edge: START → initial_ingest_node.
+[2026-07-12 21:34:03] [ANALYSIS_AGENT] [INFO] Analysis agent (edgeless LangGraph) ready.
+[2026-07-12 21:34:03] [ANALYSIS_AGENT] [INFO] Analysis query: Run an explainability audit on the most recent session and show the LIME and SHAP results
+[2026-07-12 21:34:03] [ANALYSIS_AGENT] [INFO] [initial_ingest_node] query='Run an explainability audit on the most recent session and show the LIME and SHA' planned_route=['stats_node', 'search_node', 'xai_node', 'synthesize_node']
+[2026-07-12 21:34:03] [ANALYSIS_AGENT] [DEBUG] [ROUTE] initial_ingest_node → stats_node
+[2026-07-12 21:34:03] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=initial_ingest_node routing=['initial_ingest_node → stats_node']
+[2026-07-12 21:34:03] [ANALYSIS_AGENT] [INFO] [stats_node] Fetching log statistics.
+[2026-07-12 21:34:03] [ANALYSIS_AGENT] [INFO] get_log_statistics called.
+[2026-07-12 21:34:09] [ANALYSIS_AGENT] [INFO] Stats: total=1952 sessions=13 errors=19
+[2026-07-12 21:34:09] [ANALYSIS_AGENT] [INFO] [stats_node] Stats fetched (1612 chars).
+[2026-07-12 21:34:09] [ANALYSIS_AGENT] [DEBUG] [ROUTE] stats_node → search_node
+[2026-07-12 21:34:09] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=stats_node routing=['stats_node → search_node']
+[2026-07-12 21:34:09] [ANALYSIS_AGENT] [INFO] [search_node] Running semantic log search.
+[2026-07-12 21:34:10] [ANALYSIS_AGENT] [INFO] semantic_log_search: query='Run an explainability audit on the most recent session and show the LIME and SHA' k=15
+[2026-07-12 21:34:22] [ANALYSIS_AGENT] [INFO] semantic_log_search returned 15 results.
+[2026-07-12 21:34:22] [ANALYSIS_AGENT] [INFO] [search_node] Search returned (288339 chars).
+[2026-07-12 21:34:22] [ANALYSIS_AGENT] [DEBUG] [ROUTE] search_node → xai_node
+[2026-07-12 21:34:22] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=search_node routing=['search_node → xai_node']
+[2026-07-12 21:34:22] [ANALYSIS_AGENT] [INFO] [xai_node] Running explainability audit.
+[2026-07-12 21:34:22] [ANALYSIS_AGENT] [INFO] run_explainability_audit: session_id=dd3ccb23-de48-4aed-84eb-f7d5c7ba05de trace_id=None top_k=20
+[2026-07-12 21:34:25] [ANALYSIS_AGENT] [INFO] Audit targeting 20 log entries.
+[2026-07-12 21:34:25] [ANALYSIS_AGENT] [INFO] fetch_neo4j_subgraph: session_id=dd3ccb23-de48-4aed-84eb-f7d5c7ba05de trace_id=None hop_depth=2
+[2026-07-12 21:34:29] [ANALYSIS_AGENT] [INFO] fetch_neo4j_subgraph: 0 nodes extracted.
+[2026-07-12 21:40:26] [ANALYSIS_AGENT] [INFO] Analysis Agent log: C:\Users\Victor\My Files\Kodecamp\stage3\hlp_graph_knowledge_agent\analysis_agent.log
+[2026-07-12 21:40:26] [ANALYSIS_AGENT] [INFO] Edgeless StateGraph compiled. Nodes: ['initial_ingest_node', 'stats_node', 'search_node', 'xai_node', 'chart_node', 'synthesize_node']. Only hardcoded edge: START → initial_ingest_node.
+[2026-07-12 21:40:26] [ANALYSIS_AGENT] [INFO] Analysis agent (edgeless LangGraph) ready.
+[2026-07-12 21:40:26] [ANALYSIS_AGENT] [INFO] Analysis query: Run an explainability audit on the most recent session and show the LIME and SHAP results
+[2026-07-12 21:40:26] [ANALYSIS_AGENT] [INFO] [initial_ingest_node] query='Run an explainability audit on the most recent session and show the LIME and SHA' planned_route=['stats_node', 'search_node', 'xai_node', 'synthesize_node']
+[2026-07-12 21:40:26] [ANALYSIS_AGENT] [DEBUG] [ROUTE] initial_ingest_node → stats_node
+[2026-07-12 21:40:26] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=initial_ingest_node routing=['initial_ingest_node → stats_node']
+[2026-07-12 21:40:26] [ANALYSIS_AGENT] [INFO] [stats_node] Fetching log statistics.
+[2026-07-12 21:40:26] [ANALYSIS_AGENT] [INFO] get_log_statistics called.
+[2026-07-12 21:40:34] [ANALYSIS_AGENT] [INFO] Stats: total=1952 sessions=13 errors=19
+[2026-07-12 21:40:34] [ANALYSIS_AGENT] [INFO] [stats_node] Stats fetched (1612 chars).
+[2026-07-12 21:40:34] [ANALYSIS_AGENT] [DEBUG] [ROUTE] stats_node → search_node
+[2026-07-12 21:40:34] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=stats_node routing=['stats_node → search_node']
+[2026-07-12 21:40:34] [ANALYSIS_AGENT] [INFO] [search_node] Running semantic log search.
+[2026-07-12 21:40:34] [ANALYSIS_AGENT] [INFO] semantic_log_search: query='Run an explainability audit on the most recent session and show the LIME and SHA' k=15
+[2026-07-12 21:40:43] [ANALYSIS_AGENT] [INFO] semantic_log_search returned 15 results.
+[2026-07-12 21:40:43] [ANALYSIS_AGENT] [INFO] [search_node] Search returned (288339 chars).
+[2026-07-12 21:40:43] [ANALYSIS_AGENT] [DEBUG] [ROUTE] search_node → xai_node
+[2026-07-12 21:40:43] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=search_node routing=['search_node → xai_node']
+[2026-07-12 21:40:43] [ANALYSIS_AGENT] [INFO] [xai_node] Running explainability audit.
+[2026-07-12 21:40:43] [ANALYSIS_AGENT] [INFO] run_explainability_audit: session_id=dd3ccb23-de48-4aed-84eb-f7d5c7ba05de trace_id=None top_k=20
+[2026-07-12 21:40:48] [ANALYSIS_AGENT] [INFO] Audit targeting 20 log entries.
+[2026-07-12 21:40:48] [ANALYSIS_AGENT] [INFO] fetch_neo4j_subgraph: session_id=dd3ccb23-de48-4aed-84eb-f7d5c7ba05de trace_id=None hop_depth=2
+[2026-07-12 21:40:49] [ANALYSIS_AGENT] [INFO] Tier 2 cache HIT: subgraph:dd3ccb23-de48-4aed-84eb-f7d5c7ba05de::2
+[2026-07-12 21:40:50] [ANALYSIS_AGENT] [INFO] Tier 2 cache HIT: xai:48969d39bd2612c5
+[2026-07-12 21:44:16] [ANALYSIS_AGENT] [INFO] Analysis Agent log: C:\Users\Victor\My Files\Kodecamp\stage3\hlp_graph_knowledge_agent\analysis_agent.log
+[2026-07-12 21:44:16] [ANALYSIS_AGENT] [INFO] Edgeless StateGraph compiled. Nodes: ['initial_ingest_node', 'stats_node', 'search_node', 'xai_node', 'chart_node', 'synthesize_node']. Only hardcoded edge: START → initial_ingest_node.
+[2026-07-12 21:44:16] [ANALYSIS_AGENT] [INFO] Analysis agent (edgeless LangGraph) ready.
+[2026-07-12 21:44:16] [ANALYSIS_AGENT] [INFO] Analysis query: Run an explainability audit on the most recent session and show the LIME and SHAP results
+[2026-07-12 21:44:16] [ANALYSIS_AGENT] [INFO] [initial_ingest_node] query='Run an explainability audit on the most recent session and show the LIME and SHA' planned_route=['stats_node', 'search_node', 'xai_node', 'synthesize_node']
+[2026-07-12 21:44:16] [ANALYSIS_AGENT] [DEBUG] [ROUTE] initial_ingest_node → stats_node
+[2026-07-12 21:44:16] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=initial_ingest_node routing=['initial_ingest_node → stats_node']
+[2026-07-12 21:44:16] [ANALYSIS_AGENT] [INFO] [stats_node] Fetching log statistics.
+[2026-07-12 21:44:16] [ANALYSIS_AGENT] [INFO] get_log_statistics called.
+[2026-07-12 21:44:23] [ANALYSIS_AGENT] [INFO] Stats: total=1952 sessions=13 errors=19
+[2026-07-12 21:44:23] [ANALYSIS_AGENT] [INFO] [stats_node] Stats fetched (1612 chars).
+[2026-07-12 21:44:23] [ANALYSIS_AGENT] [DEBUG] [ROUTE] stats_node → search_node
+[2026-07-12 21:44:23] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=stats_node routing=['stats_node → search_node']
+[2026-07-12 21:44:23] [ANALYSIS_AGENT] [INFO] [search_node] Running semantic log search.
+[2026-07-12 21:44:23] [ANALYSIS_AGENT] [INFO] semantic_log_search: query='Run an explainability audit on the most recent session and show the LIME and SHA' k=15
+[2026-07-12 21:44:32] [ANALYSIS_AGENT] [INFO] semantic_log_search returned 15 results.
+[2026-07-12 21:44:32] [ANALYSIS_AGENT] [INFO] [search_node] Search returned (288339 chars).
+[2026-07-12 21:44:32] [ANALYSIS_AGENT] [DEBUG] [ROUTE] search_node → xai_node
+[2026-07-12 21:44:32] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=search_node routing=['search_node → xai_node']
+[2026-07-12 21:44:32] [ANALYSIS_AGENT] [INFO] [xai_node] Running explainability audit.
+[2026-07-12 21:44:32] [ANALYSIS_AGENT] [INFO] run_explainability_audit: session_id=dd3ccb23-de48-4aed-84eb-f7d5c7ba05de trace_id=None top_k=20
+[2026-07-12 21:44:35] [ANALYSIS_AGENT] [INFO] Audit targeting 20 log entries.
+[2026-07-12 21:44:35] [ANALYSIS_AGENT] [INFO] fetch_neo4j_subgraph: session_id=dd3ccb23-de48-4aed-84eb-f7d5c7ba05de trace_id=None hop_depth=2
+[2026-07-12 21:44:36] [ANALYSIS_AGENT] [INFO] fetch_neo4j_subgraph: 0 nodes extracted.
+[2026-07-12 21:44:41] [ANALYSIS_AGENT] [INFO] Audit report saved: C:\Users\Victor\My Files\Kodecamp\stage3\hlp_graph_knowledge_agent\explainability_audit_report.json
+[2026-07-12 21:44:41] [ANALYSIS_AGENT] [INFO] Explainability audit complete: {"status": "success", "session_audited": "dd3ccb23-de48-4aed-84eb-f7d5c7ba05de", "entries_analysed": 20, "lime_tokens_scored": 0, "shap_features_scored": 3, "graph_context_nodes": {"sessions": 0, "agent_actions": 0, "mcp_calls": 0}, "report_path": "C:\\Users\\Victor\\My Files\\Kodecamp\\stage3\\hlp_graph_knowledge_agent\\explainability_audit_report.json"}
+[2026-07-12 21:44:41] [ANALYSIS_AGENT] [INFO] [xai_node] XAI audit returned (389 chars).
+[2026-07-12 21:44:41] [ANALYSIS_AGENT] [DEBUG] [ROUTE] xai_node → synthesize_node
+[2026-07-12 21:44:41] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=xai_node routing=['xai_node → synthesize_node']
+[2026-07-12 21:44:41] [ANALYSIS_AGENT] [INFO] [synthesize_node] Synthesising final answer.
+[2026-07-12 21:45:00] [ANALYSIS_AGENT] [INFO] [synthesize_node] Final answer (5179 chars).
+[2026-07-12 21:45:00] [ANALYSIS_AGENT] [DEBUG] [ROUTE] synthesize_node → END
+[2026-07-12 21:45:00] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=synthesize_node routing=['synthesize_node → END']
+[2026-07-12 21:45:00] [ANALYSIS_AGENT] [INFO] Analysis query complete. steps=5 final_answer_len=5179
+[2026-07-12 21:45:28] [ANALYSIS_AGENT] [INFO] Analysis query: Run an explainability audit on the most recent session and show the LIME and SHAP results
+[2026-07-12 21:45:28] [ANALYSIS_AGENT] [INFO] [initial_ingest_node] query='Run an explainability audit on the most recent session and show the LIME and SHA' planned_route=['stats_node', 'search_node', 'xai_node', 'synthesize_node']
+[2026-07-12 21:45:28] [ANALYSIS_AGENT] [DEBUG] [ROUTE] initial_ingest_node → stats_node
+[2026-07-12 21:45:28] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=initial_ingest_node routing=['initial_ingest_node → stats_node']
+[2026-07-12 21:45:28] [ANALYSIS_AGENT] [INFO] [stats_node] Fetching log statistics.
+[2026-07-12 21:45:28] [ANALYSIS_AGENT] [INFO] get_log_statistics called.
+[2026-07-12 21:45:35] [ANALYSIS_AGENT] [INFO] Stats: total=1952 sessions=13 errors=19
+[2026-07-12 21:45:35] [ANALYSIS_AGENT] [INFO] [stats_node] Stats fetched (1612 chars).
+[2026-07-12 21:45:35] [ANALYSIS_AGENT] [DEBUG] [ROUTE] stats_node → search_node
+[2026-07-12 21:45:35] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=stats_node routing=['stats_node → search_node']
+[2026-07-12 21:45:35] [ANALYSIS_AGENT] [INFO] [search_node] Running semantic log search.
+[2026-07-12 21:45:35] [ANALYSIS_AGENT] [INFO] semantic_log_search: query='Run an explainability audit on the most recent session and show the LIME and SHA' k=15
+[2026-07-12 21:45:38] [ANALYSIS_AGENT] [INFO] semantic_log_search returned 15 results.
+[2026-07-12 21:45:38] [ANALYSIS_AGENT] [INFO] [search_node] Search returned (288339 chars).
+[2026-07-12 21:45:38] [ANALYSIS_AGENT] [DEBUG] [ROUTE] search_node → xai_node
+[2026-07-12 21:45:38] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=search_node routing=['search_node → xai_node']
+[2026-07-12 21:45:38] [ANALYSIS_AGENT] [INFO] [xai_node] Running explainability audit.
+[2026-07-12 21:45:38] [ANALYSIS_AGENT] [INFO] run_explainability_audit: session_id=dd3ccb23-de48-4aed-84eb-f7d5c7ba05de trace_id=None top_k=20
+[2026-07-12 21:45:49] [ANALYSIS_AGENT] [INFO] Audit targeting 20 log entries.
+[2026-07-12 21:45:49] [ANALYSIS_AGENT] [INFO] fetch_neo4j_subgraph: session_id=dd3ccb23-de48-4aed-84eb-f7d5c7ba05de trace_id=None hop_depth=2
+[2026-07-12 21:45:50] [ANALYSIS_AGENT] [INFO] Tier 2 cache HIT: subgraph:dd3ccb23-de48-4aed-84eb-f7d5c7ba05de::2
+[2026-07-12 21:45:50] [ANALYSIS_AGENT] [INFO] Tier 2 cache HIT: xai:48969d39bd2612c5
+[2026-07-12 21:45:50] [ANALYSIS_AGENT] [INFO] Audit report saved: C:\Users\Victor\My Files\Kodecamp\stage3\hlp_graph_knowledge_agent\explainability_audit_report.json
+[2026-07-12 21:45:50] [ANALYSIS_AGENT] [INFO] Explainability audit complete: {"status": "success", "session_audited": "dd3ccb23-de48-4aed-84eb-f7d5c7ba05de", "entries_analysed": 20, "lime_tokens_scored": 0, "shap_features_scored": 3, "graph_context_nodes": {"sessions": 0, "agent_actions": 0, "mcp_calls": 0}, "report_path": "C:\\Users\\Victor\\My Files\\Kodecamp\\stage3\\hlp_graph_knowledge_agent\\explainability_audit_report.json"}
+[2026-07-12 21:45:50] [ANALYSIS_AGENT] [INFO] [xai_node] XAI audit returned (389 chars).
+[2026-07-12 21:45:50] [ANALYSIS_AGENT] [DEBUG] [ROUTE] xai_node → synthesize_node
+[2026-07-12 21:45:50] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=xai_node routing=['xai_node → synthesize_node']
+[2026-07-12 21:45:50] [ANALYSIS_AGENT] [INFO] [synthesize_node] Synthesising final answer.
+[2026-07-12 21:46:08] [ANALYSIS_AGENT] [INFO] [synthesize_node] Final answer (5179 chars).
+[2026-07-12 21:46:08] [ANALYSIS_AGENT] [DEBUG] [ROUTE] synthesize_node → END
+[2026-07-12 21:46:08] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=synthesize_node routing=['synthesize_node → END']
+[2026-07-12 21:46:08] [ANALYSIS_AGENT] [INFO] Analysis query complete. steps=5 final_answer_len=5179
+[2026-07-12 21:46:49] [ANALYSIS_AGENT] [INFO] Analysis query: Run an explainability audit on the most recent session and show the LIME and SHAP results
+[2026-07-12 21:46:49] [ANALYSIS_AGENT] [INFO] [initial_ingest_node] query='Run an explainability audit on the most recent session and show the LIME and SHA' planned_route=['stats_node', 'search_node', 'xai_node', 'synthesize_node']
+[2026-07-12 21:46:49] [ANALYSIS_AGENT] [DEBUG] [ROUTE] initial_ingest_node → stats_node
+[2026-07-12 21:46:49] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=initial_ingest_node routing=['initial_ingest_node → stats_node']
+[2026-07-12 21:46:49] [ANALYSIS_AGENT] [INFO] [stats_node] Fetching log statistics.
+[2026-07-12 21:46:49] [ANALYSIS_AGENT] [INFO] get_log_statistics called.
+[2026-07-12 21:46:55] [ANALYSIS_AGENT] [INFO] Stats: total=1952 sessions=13 errors=19
+[2026-07-12 21:46:55] [ANALYSIS_AGENT] [INFO] [stats_node] Stats fetched (1612 chars).
+[2026-07-12 21:46:55] [ANALYSIS_AGENT] [DEBUG] [ROUTE] stats_node → search_node
+[2026-07-12 21:46:55] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=stats_node routing=['stats_node → search_node']
+[2026-07-12 21:46:55] [ANALYSIS_AGENT] [INFO] [search_node] Running semantic log search.
+[2026-07-12 21:46:55] [ANALYSIS_AGENT] [INFO] semantic_log_search: query='Run an explainability audit on the most recent session and show the LIME and SHA' k=15
+[2026-07-12 21:46:59] [ANALYSIS_AGENT] [INFO] semantic_log_search returned 15 results.
+[2026-07-12 21:46:59] [ANALYSIS_AGENT] [INFO] [search_node] Search returned (288339 chars).
+[2026-07-12 21:46:59] [ANALYSIS_AGENT] [DEBUG] [ROUTE] search_node → xai_node
+[2026-07-12 21:46:59] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=search_node routing=['search_node → xai_node']
+[2026-07-12 21:46:59] [ANALYSIS_AGENT] [INFO] [xai_node] Running explainability audit.
+[2026-07-12 21:46:59] [ANALYSIS_AGENT] [INFO] run_explainability_audit: session_id=dd3ccb23-de48-4aed-84eb-f7d5c7ba05de trace_id=None top_k=20
+[2026-07-12 21:47:02] [ANALYSIS_AGENT] [INFO] Audit targeting 20 log entries.
+[2026-07-12 21:47:02] [ANALYSIS_AGENT] [INFO] fetch_neo4j_subgraph: session_id=dd3ccb23-de48-4aed-84eb-f7d5c7ba05de trace_id=None hop_depth=2
+[2026-07-12 21:47:03] [ANALYSIS_AGENT] [INFO] Tier 2 cache HIT: subgraph:dd3ccb23-de48-4aed-84eb-f7d5c7ba05de::2
+[2026-07-12 21:47:03] [ANALYSIS_AGENT] [INFO] Tier 2 cache HIT: xai:48969d39bd2612c5
+[2026-07-12 21:47:03] [ANALYSIS_AGENT] [INFO] Audit report saved: C:\Users\Victor\My Files\Kodecamp\stage3\hlp_graph_knowledge_agent\explainability_audit_report.json
+[2026-07-12 21:47:03] [ANALYSIS_AGENT] [INFO] Explainability audit complete: {"status": "success", "session_audited": "dd3ccb23-de48-4aed-84eb-f7d5c7ba05de", "entries_analysed": 20, "lime_tokens_scored": 0, "shap_features_scored": 3, "graph_context_nodes": {"sessions": 0, "agent_actions": 0, "mcp_calls": 0}, "report_path": "C:\\Users\\Victor\\My Files\\Kodecamp\\stage3\\hlp_graph_knowledge_agent\\explainability_audit_report.json"}
+[2026-07-12 21:47:03] [ANALYSIS_AGENT] [INFO] [xai_node] XAI audit returned (389 chars).
+[2026-07-12 21:47:03] [ANALYSIS_AGENT] [DEBUG] [ROUTE] xai_node → synthesize_node
+[2026-07-12 21:47:03] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=xai_node routing=['xai_node → synthesize_node']
+[2026-07-12 21:47:03] [ANALYSIS_AGENT] [INFO] [synthesize_node] Synthesising final answer.
+[2026-07-12 21:47:21] [ANALYSIS_AGENT] [INFO] [synthesize_node] Final answer (5179 chars).
+[2026-07-12 21:47:21] [ANALYSIS_AGENT] [DEBUG] [ROUTE] synthesize_node → END
+[2026-07-12 21:47:21] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=synthesize_node routing=['synthesize_node → END']
+[2026-07-12 21:47:21] [ANALYSIS_AGENT] [INFO] Analysis query complete. steps=5 final_answer_len=5179

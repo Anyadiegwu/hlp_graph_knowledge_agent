@@ -2,20 +2,18 @@ from __future__ import annotations
 
 import base64
 import io
-import json
 import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import matplotlib
 matplotlib.use("Agg") 
 import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
 import seaborn as sns
 import pandas as pd
-import numpy as np
+
 
 logger = logging.getLogger("analysis_dashboard.analytics")
 

@@ -8,10 +8,13 @@ import uuid
 import warnings
 from pathlib import Path
 from typing import Any
+from datetime import datetime, timezone
 
 warnings.filterwarnings("ignore")
 
 from dotenv import find_dotenv
+import redis as redis_client_lib
+import hashlib
 from langchain.agents import create_agent
 from langchain.tools import tool
 from langchain_core.language_models import BaseChatModel
@@ -19,6 +22,9 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig, RunnableLambda
 from langchain_mcp_adapters.callbacks import CallbackContext, Callbacks
 from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_redis import RedisSemanticCache
+from langchain_core.globals import set_llm_cache
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from mcp.shared.context import RequestContext
 from mcp.types import (
     CreateMessageRequestParams,
@@ -28,8 +34,6 @@ from mcp.types import (
 )
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from tenacity import wait_exponential
-
 from agent_client.log_store import (
     HLPLogStore,
     LogEntry,
@@ -87,8 +91,8 @@ class Settings(BaseSettings):
     model_temperature: float            = 0.0
     mcp_server_url:    str              = "http://localhost:8000/mcp"
     use_groq:          bool             = True
-    log_db_path:       str              = ""
     ollama_model_name: str              = "llama3.2:3b"
+    redis_url:         SecretStr | None = None
 
     model_config = SettingsConfigDict(
         env_file=find_dotenv(".env"),
@@ -99,15 +103,14 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-_db_path  = settings.log_db_path or (_REPO_ROOT / "mcp_agent_log.db")
-log_store: HLPLogStore = get_log_store(_db_path)
-client_logger.info("Vector log store: %s", _db_path)
+log_store: HLPLogStore = get_log_store()
+client_logger.info("Vector log store: Supabase (pooled)")
 
 SESSION_ID = str(uuid.uuid4())
 client_logger.info("Session ID: %s", SESSION_ID)
 
 
-def _persist(
+async def _persist(
     interaction_type: MCPInteractionType,
     content: str,
     namespace_path: str,
@@ -130,9 +133,9 @@ def _persist(
             token_count=token_count,
             metadata=metadata or {},
         )
-        log_store.put(entry, embed=embed)
+        await log_store.put(entry, embed=embed)
     except Exception as exc:
-        client_logger.warning("Log store write failed: %s", exc)
+        client_logger.warning("Log store write failed: %s", exc, exc_info=True)
 
 
 RESILIENCE_STATE: dict[str, int] = {
@@ -142,8 +145,8 @@ RESILIENCE_STATE: dict[str, int] = {
 }
 
 
-def _flush_resilience_state() -> None:
-    _persist(
+async def _flush_resilience_state() -> None:
+    await _persist(
         interaction_type=MCPInteractionType.SYSTEM_EVENT,
         content=json.dumps(RESILIENCE_STATE),
         namespace_path=NS.SYSTEM_STARTUP,
@@ -199,7 +202,7 @@ class _SelfHealRunnable:
             full_error_trace[:300],
         )
 
-        _persist(
+        await _persist(
             interaction_type=MCPInteractionType.ERROR,
             content=(
                 f"[SELF-HEAL] Primary chain failed. Attempting LLM self-correction.\n"
@@ -266,7 +269,7 @@ class _SelfHealRunnable:
             model_used,
             response_text[:300],
         )
-        _persist(
+        await _persist(
             interaction_type=MCPInteractionType.AGENT_FINAL_ANSWER,
             content=f"[SELF-HEAL RECOVERY] {response_text}",
             namespace_path=NS.AGENT_FINAL_ANSWER,
@@ -296,7 +299,7 @@ class _AbsoluteFallbackRunnable:
         )
 
         try:
-            _persist(
+            await _persist(
                 interaction_type=MCPInteractionType.ERROR,
                 content=(
                     f"[ABSOLUTE FALLBACK] Catastrophic execution failure.\n"
@@ -422,6 +425,102 @@ def _build_sampling_model() -> BaseChatModel:
 
     raise RuntimeError("No model available for MCP Sampling. Set GEMINI_API_KEY or GROQ_API_KEY.")
 
+class TrackedRedisSemanticCache(RedisSemanticCache):
+    """RedisSemanticCache that records hit/miss/token/cost telemetry in Redis."""
+
+    _COST_PER_1K_TOKENS_USD = 0.00015
+    _AVG_CHARS_PER_TOKEN = 4
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._stats_client = redis_client_lib.from_url(settings.redis_url.get_secret_value())
+
+    def lookup(self, prompt: str, llm_string: str):
+        start = time.perf_counter()
+        result = super().lookup(prompt, llm_string)
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        self._record_lookup(prompt, llm_string, result, elapsed_ms)
+        return result
+
+    async def alookup(self, prompt: str, llm_string: str):
+        start = time.perf_counter()
+        result = await super().alookup(prompt, llm_string)
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        self._record_lookup(prompt, llm_string, result, elapsed_ms)
+        return result
+
+    def update(self, prompt: str, llm_string: str, return_val) -> None:
+        self._record_update(prompt, llm_string)
+        super().update(prompt, llm_string, return_val)
+
+    async def aupdate(self, prompt: str, llm_string: str, return_val) -> None:
+        self._record_update(prompt, llm_string)
+        await super().aupdate(prompt, llm_string, return_val)
+
+    def _record_lookup(self, prompt: str, llm_string: str, result, elapsed_ms: float) -> None:
+        """Shared telemetry logic for both sync lookup() and async alookup()."""
+        prompt_hash = hashlib.sha256(f"{prompt}{llm_string}".encode()).hexdigest()[:16]
+
+        if result is not None:
+            tokens_saved = self._estimate_tokens(result)
+            cost_saved = (tokens_saved / 1000) * self._COST_PER_1K_TOKENS_USD
+            self._stats_client.incr("hlp:cache:tier1:hits")
+            self._stats_client.incrby("hlp:cache:tier1:tokens_saved", tokens_saved)
+            self._stats_client.incrbyfloat("hlp:cache:tier1:cost_saved_usd", cost_saved)
+            self._record_latency("hit", elapsed_ms)
+        else:
+            self._stats_client.incr("hlp:cache:tier1:misses")
+            self._stats_client.setex(f"hlp:cache:tier:pending:{prompt_hash}", 120, str(time.perf_counter()))
+
+    def _record_update(self, prompt: str, llm_string: str) -> None:
+        """Shared telemetry logic for both sync update() and async aupdate()."""
+        prompt_hash = hashlib.sha256(f"{prompt}{llm_string}".encode()).hexdigest()[:16]
+        pending_key = f"hlp:cache:tier:pending:{prompt_hash}"
+        pending_start = self._stats_client.get(pending_key)
+        if pending_start is not None:
+            llm_elapsed_ms = (time.perf_counter() - float(pending_start)) * 1000
+            self._record_latency("miss", llm_elapsed_ms)
+            self._stats_client.delete(pending_key)
+
+    def _record_latency(self, kind: str, elapsed_ms: float) -> None:
+        self._stats_client.incrbyfloat(f"hlp:cache:tier1:latency_sum_{kind}", elapsed_ms)
+        self._stats_client.incr(f"hlp:cache:tier1:latency_count_{kind}")
+
+    def _estimate_tokens(self, generations) -> int:
+        text = "".join(getattr(g, "text", "") for g in generations)
+        return max(1, len(text) // self._AVG_CHARS_PER_TOKEN)
+    
+def _build_semantic_cache() -> RedisSemanticCache | None:
+    if not settings.redis_url:
+        client_logger.warning("REDIS_URL not set - semantic cache disabled.")
+        return None
+    try:
+        try:
+            _r = redis_client_lib.from_url(settings.redis_url.get_secret_value())
+            _r.execute_command("FT.DROPINDEX", "llmcache", "DD")
+            client_logger.info("Dropped stale llmcache Redis index.")
+        except Exception as drop_exc:
+            client_logger.info("No stale llmcache index to drop (%s).", drop_exc)
+
+        cache_embeddings = GoogleGenerativeAIEmbeddings(
+            model="models/gemini-embedding-001",
+            google_api_key=settings.gemini_api_key.get_secret_value(),
+            output_dimensionality=768,
+        )
+        cache = TrackedRedisSemanticCache(
+            redis_url=settings.redis_url.get_secret_value(),
+            embeddings=cache_embeddings,
+            distance_threshold=0.15,
+        )
+        client_logger.info("Redis semantic cache enabled (distance_threshold=0.15)")
+        return cache
+    except Exception as exc:
+        client_logger.warning("Semantic cache init failed (%s) - continuing uncached.", exc)
+        return None
+
+_semantic_cache = _build_semantic_cache()
+if _semantic_cache is not None:
+    set_llm_cache(_semantic_cache)
 
 primary_model  = _build_primary_model()
 sampling_model = _build_sampling_model()
@@ -467,7 +566,7 @@ async def sampling_callback(
         prompt_texts.append(text)
         lc_messages.append({"role": getattr(msg, "role", "user"), "content": text})
 
-    _persist(
+    await _persist(
         interaction_type=MCPInteractionType.SAMPLING_REQUEST,
         content="\n---\n".join(prompt_texts),
         namespace_path=NS.MCP_SERVER_SAMPLING,
@@ -502,13 +601,13 @@ async def sampling_callback(
                 model_used = settings.groq_model_name
             except Exception as exc2:
                 client_logger.error("Groq fallback also failed: %s", exc2)
-                response_text = f"Error during sampling: {exc2}"
+                raise RuntimeError(f"All sampling backends failed: primary={exc}, groq={exc2}") from exc2
         else:
-            response_text = f"Error during sampling: {exc}"
+            raise RuntimeError(f"Sampling failed and no Groq fallback configured: {exc}") from exc
 
     latency = (time.perf_counter() - _t0) * 1000
 
-    _persist(
+    await _persist(
         interaction_type=MCPInteractionType.SAMPLING_RESPONSE,
         content=response_text or "",
         namespace_path=NS.MCP_CLIENT_SAMPLING,
@@ -550,7 +649,7 @@ async def log_handler(
     elif "sampling" in message.lower():
         ns = NS.MCP_SERVER_SAMPLING
 
-    _persist(
+    await _persist(
         interaction_type=(
             MCPInteractionType.ERROR if level >= logging.ERROR
             else MCPInteractionType.TOOL_INVOCATION
@@ -611,7 +710,7 @@ async def connect_to_server() -> None:
         "MCP connection established — %d tools registered.", len(_remote_tools)
     )
 
-    _persist(
+    await _persist(
         interaction_type=MCPInteractionType.SYSTEM_EVENT,
         content=(
             f"MCP connection established. tools={list(_remote_tools.keys())} "
@@ -650,7 +749,7 @@ async def reflect_answer_tool(
     client_logger.info("Invoking remote reflect_answer tool.")
     _t0 = time.perf_counter()
 
-    _persist(
+    await _persist(
         interaction_type=MCPInteractionType.TOOL_INVOCATION,
         content=f"reflect_answer invoked. query='{original_query[:120]}' draft_len={len(draft_answer)}",
         namespace_path=NS.MCP_CLIENT_TOOL_CALL,
@@ -671,7 +770,7 @@ async def reflect_answer_tool(
     latency = (time.perf_counter() - _t0) * 1000
     client_logger.info("reflect_answer tool returned (%.0f ms).", latency)
 
-    _persist(
+    await _persist(
         interaction_type=MCPInteractionType.TOOL_INVOCATION,
         content=f"reflect_answer completed. result_len={len(result)} latency_ms={latency:.0f}",
         namespace_path=NS.MCP_SERVER_REFLECTION,
@@ -702,7 +801,7 @@ async def query_knowledge_tool(query: str) -> str:
     client_logger.info("Invoking remote query_knowledge tool: '%s'", query[:80])
     _t0 = time.perf_counter()
 
-    _persist(
+    await _persist(
         interaction_type=MCPInteractionType.TOOL_INVOCATION,
         content=f"query_knowledge invoked. query='{query}'",
         namespace_path=NS.MCP_CLIENT_TOOL_CALL,
@@ -728,7 +827,7 @@ async def query_knowledge_tool(query: str) -> str:
 
     client_logger.info("query_knowledge tool returned (%d chars, %.0f ms).", len(result_str), latency)
 
-    _persist(
+    await _persist(
         interaction_type=MCPInteractionType.RESOURCE_READ,
         content=result_str[:2000],
         namespace_path=NS.MCP_SERVER_CRAG,
@@ -770,7 +869,7 @@ async def simulate_fault_tool(
     )
     _t0 = time.perf_counter()
 
-    _persist(
+    await _persist(
         interaction_type=MCPInteractionType.TOOL_INVOCATION,
         content=(
             f"simulate_fault invoked. "
@@ -792,7 +891,7 @@ async def simulate_fault_tool(
     })
 
     latency = (time.perf_counter() - _t0) * 1000
-    _persist(
+    await _persist(
         interaction_type=MCPInteractionType.TOOL_INVOCATION,
         content=f"simulate_fault returned (unexpectedly): {str(result)[:200]}",
         namespace_path=NS.MCP_SERVER_TOOL,
@@ -863,7 +962,7 @@ async def run_query(agent: Any, user_query: str) -> str:
     client_logger.info("=" * 70)
     client_logger.info("Query: %s", user_query)
 
-    _persist(
+    await _persist(
         interaction_type=MCPInteractionType.AGENT_REASONING,
         content=f"Agent received query: {user_query}",
         namespace_path=NS.AGENT_PLANNING,
@@ -911,7 +1010,7 @@ async def run_query(agent: Any, user_query: str) -> str:
 
     latency = (time.perf_counter() - _t0) * 1000
 
-    _persist(
+    await _persist(
         interaction_type=MCPInteractionType.AGENT_FINAL_ANSWER,
         content=final_response,
         namespace_path=NS.AGENT_FINAL_ANSWER,
@@ -924,7 +1023,7 @@ async def run_query(agent: Any, user_query: str) -> str:
         },
     )
 
-    _flush_resilience_state()
+    await _flush_resilience_state()
 
     client_logger.info("Answer:\n%s", final_response)
     client_logger.info("=" * 70)
@@ -957,7 +1056,7 @@ async def run_resilience_test() -> None:
     fault_runnable  = RunnableLambda(_fault_call)
     resilient_fault = _build_resilient_chain(fault_runnable, primary_model)
 
-    _persist(
+    await _persist(
         interaction_type=MCPInteractionType.TOOL_INVOCATION,
         content="Resilience test started: direct fault injection bypassing agent loop.",
         namespace_path=NS.MCP_CLIENT_TOOL_CALL,
@@ -993,7 +1092,7 @@ async def run_resilience_test() -> None:
     except Exception as exc:
         client_logger.error("[RESILIENCE TEST] Unhandled exception: %s", exc)
 
-    _flush_resilience_state()
+    await _flush_resilience_state()
     client_logger.info(
         "Resilience summary: fallback_activations=%d "
         "self_heal_iterations=%d absolute_fallback_hits=%d",
@@ -1003,8 +1102,99 @@ async def run_resilience_test() -> None:
     )
     client_logger.info("=" * 70)
 
+async def _generate_cache_performance_audit() -> None:
+    """
+    Exercises the Tier 1 semantic cache once at agent startup - a guaranteed 
+    MISS followed by a guaranteed HIT on the same prompt - and writes the
+    trace to cache_performace_audit.json at the repo root.
+    """
+    if not settings.redis_url or _semantic_cache is None:
+        client_logger.warning("Semantic cache unavailable - skipping cache_performance_audit.json")
+        return
+
+    redis_client = redis_client_lib.from_url(settings.redis_url.get_secret_value())
+
+    def _tier1_counters() -> dict:
+        def _int(key):
+            v = redis_client.get(key)
+            return int(v) if v is not None else 0.0
+        def _float(key):
+            v = redis_client.get(key)
+            return float(v) if v is not None else 0.0
+        return {
+            "hits": _int("hlp:cache:tier1:hits"),
+            "misses": _int("hlp:cache:tier1:misses"),
+            "tokens_saved": _int("hlp:cache:tier1:tokens_saved"),
+            "cost_saved_usd": round(_float("hlp:cache:tier1:cost_saved_usd"), 6),
+        }
+    test_prompt = (
+        "Summarize the primary causes of latency spikes in a distributed "
+        "multi-agent log analysis pipeline."
+    )
+    before = _tier1_counters()
+
+    start_1 = time.perf_counter()
+    response_1 = await sampling_model.ainvoke(test_prompt)
+    elapsed_1_ms = round((time.perf_counter() - start_1) * 1000, 2)
+    after_1 = _tier1_counters()
+
+    start_2 = time.perf_counter()
+    response_2 = await sampling_model.ainvoke(test_prompt)
+    elapsed_2_ms = round((time.perf_counter() - start_2) * 1000, 2)
+    after_2 = _tier1_counters()
+
+    audit = {
+        "audit_generated_at": datetime.now(timezone.utc).isoformat(),
+        "cache_tier_tested": "tier1_semantic_cache",
+        "distance_threshold": 0.15,
+        "execution_trace": [
+            {
+                "step": 1,
+                "event": "cache_miss",
+                "prompt": test_prompt,
+                "latency_ms": elapsed_1_ms,
+                "tier1_counters_after": after_1,
+                "verified_miss": after_1["misses"] > before["misses"],
+                "response_preview": str(getattr(response_1, "content", response_1))[:200],
+            },
+            {
+                "step": 2,
+                "event": "cache_hit",
+                "prompt": test_prompt,
+                "latency_ms": elapsed_2_ms,
+                "tier1_counters_after": after_2,
+                "verified_hit": after_2["hits"] > after_1["hits"],
+                "response_preview": str(getattr(response_2, "content", response_2))[:200],
+            },
+        ],
+        "latency_speedup_factor": (
+            round(elapsed_1_ms / elapsed_2_ms, 2) if elapsed_2_ms > 0 else None
+        ),
+    }
+
+    try:
+        with open(_REPO_ROOT / "cache_performance_audit.json", "w", encoding="utf-8") as f:
+            json.dump(audit, f, indent=2, default=str)
+        client_logger.info("cache_performance_audit.json written to repo root.")
+    except Exception as exc:
+        client_logger.warning("Could not write cache_performance_audit.json: %s", exc)
 
 async def _async_main() -> None:
+    await _persist(
+        interaction_type=MCPInteractionType.SYSTEM_EVENT,
+        content=(
+            f"Agent session starting. "
+            f"primary_model={type(primary_model).__name__} "
+            f"sampling_model={type(sampling_model).__name__} "
+            f"max_retry_attempts={MAX_RETRY_ATTEMPTS}"
+        ),
+        namespace_path=NS.SYSTEM_STARTUP,
+        component="agent_client",
+        embed=False,
+    )
+
+    await _generate_cache_performance_audit()
+
     await connect_to_server()
     agent, _ = _build_agent()
 
@@ -1019,7 +1209,7 @@ async def _async_main() -> None:
 
     await run_resilience_test()
 
-    stats = log_store.get_stats()
+    stats = await log_store.get_stats()
     client_logger.info(
         "Session complete. Log store stats: total_entries=%d sessions=%d",
         stats["total_entries"], stats["total_sessions"],
@@ -1031,7 +1221,7 @@ async def _async_main() -> None:
         RESILIENCE_STATE["self_heal_iterations"],
         RESILIENCE_STATE["absolute_fallback_hits"],
     )
-    _persist(
+    await _persist(
         interaction_type=MCPInteractionType.SYSTEM_EVENT,
         content=(
             f"Agent session ended. total_entries={stats['total_entries']} "
@@ -1041,7 +1231,7 @@ async def _async_main() -> None:
         component="agent_client",
         embed=False,
     )
-    log_store.close()
+    await log_store.close()
 
 
 def main() -> None:

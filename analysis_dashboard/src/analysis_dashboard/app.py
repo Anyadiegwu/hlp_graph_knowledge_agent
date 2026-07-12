@@ -9,6 +9,7 @@ from pathlib import Path
 
 import streamlit as st
 from dotenv import find_dotenv, load_dotenv
+import redis as redis_client_lib
 
 load_dotenv(find_dotenv(".env"))
 
@@ -167,48 +168,83 @@ def _run_async(coro):
     except RuntimeError:
         return asyncio.run(coro)
 
+_tier3_redis: "redis_client_lib.Redis | None" = None
+def _tier3_cache_client():
+    global _tier3_redis
+    if _tier3_redis is None:
+        redis_url = os.getenv("REDIS_URL", "")
+        if not redis_url:
+            return None
+        _tier3_redis = redis_client_lib.from_url(redis_url, decode_responses=True)
+    return _tier3_redis
 
+def _tier3_get_or_compute(cache_key: str, compute_fn, ttl_seconds: int = 60) -> dict | list | None:
+    client = _tier3_cache_client()
+    full_key = f"hlp:cache:tier3:{cache_key}"
+
+    if client is not None:
+        start = time.perf_counter()
+        cached = client.get(full_key)
+        if cached is not None:
+            elapsed_ms = (time.perf_counter() - start) * 1000
+            client.incr("hlp:cache:tier3:hits")
+            client.incrbyfloat("hlp:cache:tier3:latency_sum_hit", elapsed_ms)
+            client.incr("hlp:cache:tier3:latency_count_hit")
+            return json.loads(cached)
+        client.incr("hlp:cache:tier3:misses")
+    
+    start = time.perf_counter()
+    result = compute_fn()
+    elapsed_ms = (time.perf_counter() - start) * 1000
+    if client is not None and result is not None:
+        client.setex(full_key, ttl_seconds, json.dumps(result, default=str))
+        client.incrbyfloat("hlp:cache:tier3:latency_sum_miss", elapsed_ms)
+        client.incr("hlp:cache:tier3:latency_count_miss")
+
+    return result
+    
 def _load_resilience_state() -> dict:
-    try:
-        from analysis_dashboard.store_reader import get_shared_log_store
-        store = get_shared_log_store()
-        entries = store.get_all(limit=5000)
-    except Exception:
-        return {
-            "current": {
+    def _compute():
+        try:
+            from analysis_dashboard.store_reader import get_shared_log_store
+            store = get_shared_log_store()
+            entries = _run_async(store.get_all(limit=5000))
+        except Exception:
+            return {
+                "current": {
+                    "fallback_activations": 0,
+                    "self_heal_iterations": 0,
+                    "absolute_fallback_hits": 0,
+                },
+                "history": [],
+            }
+
+        history = []
+        for e in entries:
+            raw_meta = e.get("metadata") or e.get("metadata_json") or "{}"
+            try:
+                meta = json.loads(raw_meta) if isinstance(raw_meta, str) else raw_meta
+            except Exception:
+                meta = {}
+            if meta.get("event") == "resilience_state_flush":
+                history.append({
+                    "timestamp":              e.get("timestamp", ""),
+                    "fallback_activations":   meta.get("fallback_activations", 0),
+                    "self_heal_iterations":   meta.get("self_heal_iterations", 0),
+                    "absolute_fallback_hits": meta.get("absolute_fallback_hits", 0),
+                })
+
+        current = (
+            history[-1]
+            if history
+            else {
                 "fallback_activations": 0,
                 "self_heal_iterations": 0,
                 "absolute_fallback_hits": 0,
-            },
-            "history": [],
-        }
-
-    history = []
-    for e in entries:
-        raw_meta = e.get("metadata") or e.get("metadata_json") or "{}"
-        try:
-            meta = json.loads(raw_meta) if isinstance(raw_meta, str) else raw_meta
-        except Exception:
-            meta = {}
-        if meta.get("event") == "resilience_state_flush":
-            history.append({
-                "timestamp":              e.get("timestamp", ""),
-                "fallback_activations":   meta.get("fallback_activations", 0),
-                "self_heal_iterations":   meta.get("self_heal_iterations", 0),
-                "absolute_fallback_hits": meta.get("absolute_fallback_hits", 0),
-            })
-
-    current = (
-        history[-1]
-        if history
-        else {
-            "fallback_activations": 0,
-            "self_heal_iterations": 0,
-            "absolute_fallback_hits": 0,
-        }
-    )
-    return {"current": current, "history": history}
-
+            }
+        )
+        return {"current": current, "history": history}
+    return _tier3_get_or_compute("resilience_state", _compute, ttl_seconds=30)
 
 def _render_shap_chart(shap_data: dict) -> None:
     import matplotlib
@@ -322,35 +358,96 @@ def _init_agent():
     except Exception as exc:
         return None, str(exc)
 
-
 def _load_store_stats():
-    try:
-        from analysis_dashboard.store_reader import get_shared_log_store
-        store = get_shared_log_store()
-        return store.get_stats(), store.get_sessions()
-    except Exception:
-        return None, []
+    def _compute():
+        try:
+            from analysis_dashboard.store_reader import get_shared_log_store
 
+            async def _fetch():
+                store = get_shared_log_store()
+                stats = await store.get_stats()
+                sessions = await store.get_sessions()
+                return {"stats": stats, "sessions": sessions}
+
+            return _run_async(_fetch())
+        except Exception:
+            return {"stats": None, "sessions": []}
+
+    payload = _tier3_get_or_compute("store_stats", _compute, ttl_seconds=30)
+    return payload["stats"], payload["sessions"]
 
 def _load_graph_summary():
-    try:
-        neo4j_uri = os.getenv("NEO4J_URI", "")
-        if not neo4j_uri:
+    def _compute():
+        try:
+            neo4j_uri = os.getenv("NEO4J_URI", "")
+            if not neo4j_uri:
+                return None
+            from analysis_dashboard.graph_client import Neo4jGraphClient
+            client = Neo4jGraphClient(
+                uri=neo4j_uri,
+                username=os.getenv("NEO4J_USERNAME", "neo4j"),
+                password=os.getenv("NEO4J_PASSWORD", ""),
+            )
+            if client.connect():
+                summary = client.get_graph_summary()
+                client.close()
+                return summary
             return None
-        from analysis_dashboard.graph_client import Neo4jGraphClient
-        client = Neo4jGraphClient(
-            uri=neo4j_uri,
-            username=os.getenv("NEO4J_USERNAME", "neo4j"),
-            password=os.getenv("NEO4J_PASSWORD", ""),
-        )
-        if client.connect():
-            summary = client.get_graph_summary()
-            client.close()
-            return summary
-        return None
-    except Exception:
-        return None
+        except Exception:
+            return None
+    
+    return _tier3_get_or_compute("graph_summary", _compute, ttl_seconds=60)
 
+def _get_cache_telemetry() -> dict:
+    client = _tier3_cache_client()
+    if client is None:
+        return {
+            "tier1": {"hits": 0, "misses": 0, "hit_rate": 0.0, "tokens_saved": 0, "cost_saved_usd": 0.0},
+            "tier2": {"hits": 0, "misses": 0, "hit_rate": 0.0},
+            "tier3": {"hits": 0, "misses": 0, "hit_rate": 0.0},
+        }
+    
+    def _int(key: str) -> int:
+        val = client.get(key)
+        return int(val) if val is not None else 0
+    
+    def _float(key: str) -> float:
+        val = client.get(key)
+        return float(val) if val is not None else 0.0
+    
+    def _hit_rate(hits: int, misses: int) -> float:
+        total = hits + misses
+        return round((hits / total) * 100,1) if total > 0 else 0.0
+    
+    def _avg_latency(tier: str, kind: str) -> float | None:
+        count = _int(f"hlp:cache:{tier}:latency_count_{kind}")
+        if count == 0:
+            return None
+        return round(_float(f"hlp:cache:{tier}:latency_sum_{kind}") / count, 2)
+    
+    result = {}
+    for tier in ("tier1", "tier2", "tier3"):
+        hits, misses = _int(f"hlp:cache:{tier}:hits"), _int(f"hlp:cache:{tier}:misses")
+        result[tier] = {
+            "hits": hits, "misses": misses,
+            "hit_rate": _hit_rate(hits, misses),
+            "avg_latency_hit_ms": _avg_latency(tier, "hit"),
+            "avg_latency_miss_ms": _avg_latency(tier, "miss"),
+        }
+    result["tier1"]["tokens_saved"] = _int("hlp:cache:tier1:tokens_saved")
+    result["tier1"]["cost_saved_usd"] = round(_float("hlp:cache:tier1:cost_saved_usd"), 4)
+
+    return result
+
+def _flush_cache_namespace(prefix: str) -> int:
+    """Delete all Redis keys under a given prefix, Returns count of keys deleted."""
+    client = _tier3_cache_client()
+    if client is None:
+        return 0
+    keys = list(client.scan_iter(match=f"{prefix}*"))
+    if keys:
+        client.delete(*keys)
+    return len(keys)
 
 st.markdown("""
 <div class="main-header">
@@ -404,6 +501,52 @@ with st.sidebar:
         else:
             st.info("Set NEO4J_URI in .env to enable graph features.")
 
+    st.markdown("---")
+    st.markdown("## 🧮 Cache Performance")
+    telemetry = _get_cache_telemetry()
+
+    t1 = telemetry["tier1"]
+    st.markdown("**Tier 1 - LLM Semantic Cache**")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Hit Rate", f"{t1['hit_rate']}%")
+    col2.metric("Tokens Saved", t1['tokens_saved'])
+    col3.metric("Cost Saved", f"${t1['cost_saved_usd']:.4f}")
+    st.progress(t1['hit_rate'] / 100, text=f"{t1['hits']} hits / {t1['misses']} misses")
+
+    t2 = telemetry["tier2"]
+    st.markdown("**Tier 2 - Graph & XAI Cache**")
+    st.progress(t2['hit_rate'] / 100, text=f"{t2['hit_rate']}% hit rate - {t2['hits']} hits / {t2['misses']} misses",)
+
+    t3 = telemetry["tier3"]
+    st.markdown("**Tier 3 - UI Query Cache**")
+    st.progress(
+        t3["hit_rate"] / 100,
+        text=f"{t3['hit_rate']}% hit rate - {t3['hits']} hits / {t3['misses']} misses",
+    )
+
+    st.markdown("**Latency: Cached vs. Uncached**")
+    for tier_key, tier_label in [("tier1", "LLM Calls"), ("tier2", "Graph/XAI"), ("tier3", "UI Queries")]:
+        t = telemetry[tier_key]
+        hit_ms = t.get("avg_latency_hit_ms")
+        miss_ms = t.get("avg_latency_miss_ms")
+        colA, colB = st.columns(2)
+        colA.metric(f"{tier_label} — Cache Hit", f"{hit_ms:.1f} ms" if hit_ms is not None else "—")
+        colB.metric(f"{tier_label} — Uncached", f"{miss_ms:.1f} ms" if miss_ms is not None else "—")
+    st.markdown("**Cache Invalidation**")
+    colf1, colf2, colf3, colf4 = st.columns(4)
+    if colf1.button("Flush Tier 1"):
+        n = _flush_cache_namespace("hlp:cache:tier1:")
+        st.success(f"Flushed {n} Tier 1 key(s).")
+    if colf2.button("Flush Tier 2"):
+        n = _flush_cache_namespace("hlp:cache:tier2:")
+        st.success(f"Flushed {n} Tier 2 key(s).")
+    if colf3.button("Flush Tier 3"):
+        n = _flush_cache_namespace("hlp:cache:tier3:")
+        st.success(f"Flushed {n} Tier 3 key(s).")
+    if colf4.button("Flush ALL"):
+        n = _flush_cache_namespace("hlp:cache:")
+        st.success(f"Flushed {n} key(s) across all tiers.")
+        
     st.markdown("---")
     st.markdown("## 🗂️ Sessions")
     if sessions:

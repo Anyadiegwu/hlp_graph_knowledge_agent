@@ -3,24 +3,14 @@ from __future__ import annotations
 import json
 import logging
 import os
-import sqlite3
-import threading
-from pathlib import Path
+import asyncpg
+import asyncio
+from pgvector.asyncpg import register_vector
 from typing import Any
+from dotenv import find_dotenv, load_dotenv
 
+load_dotenv(find_dotenv(".env"))
 logger = logging.getLogger("analysis_dashboard.store_reader")
-
-
-def _cosine(a: list[float], b: list[float]) -> float:
-    if len(a) != len(b):
-        return 0.0
-    dot    = sum(x * y for x, y in zip(a, b))
-    norm_a = sum(x * x for x in a) ** 0.5
-    norm_b = sum(x * x for x in b) ** 0.5
-    if norm_a == 0 or norm_b == 0:
-        return 0.0
-    return dot / (norm_a * norm_b)
-
 
 class _EmbeddingProvider:
     def __init__(self) -> None:
@@ -40,6 +30,7 @@ class _EmbeddingProvider:
             self._model = GoogleGenerativeAIEmbeddings(
                 model="models/gemini-embedding-001",
                 google_api_key=api_key,
+                output_dimensionality=768,
             )
         except Exception:
             self._stub = True
@@ -56,84 +47,67 @@ class _EmbeddingProvider:
 
 _embedder = _EmbeddingProvider()
 
-
 class SharedLogStoreReader:
-    def __init__(self, db_path: str | Path) -> None:
-        self.db_path = Path(db_path)
-        self._lock   = threading.Lock()
-        self._conn: sqlite3.Connection | None = None
+    def __init__(self, dsn: str) -> None:
+        self.dsn = dsn
+        self._pool: asyncpg.Pool | None = None
+        self._pool_loop: asyncio.AbstractEventLoop | None = None
 
-        if not self.db_path.exists():
-            logger.warning(
-                "Log DB not found at %s — search/stats will return empty results. "
-                "Run the agent_client first to populate it.",
-                self.db_path,
+    async def _get_pool(self) -> asyncpg.Pool:
+        current_loop = asyncio.get_running_loop()
+        if self._pool is None or self._pool_loop is not current_loop:
+            self._pool = await asyncpg.create_pool(
+                dsn=self.dsn,
+                min_size=1,
+                max_size=5,
+                init=register_vector,
+                statement_cache_size=0,
             )
-
-    def _get_conn(self) -> sqlite3.Connection:
-        if self._conn is None:
-            uri = f"file:{self.db_path}?mode=ro"
-            try:
-                self._conn = sqlite3.connect(
-                    uri, uri=True, check_same_thread=False, timeout=10
-                )
-            except Exception:
-                self._conn = sqlite3.connect(
-                    str(self.db_path), check_same_thread=False, timeout=10
-                )
-            self._conn.row_factory = sqlite3.Row
-        return self._conn
-
-    def _safe_rows(self, query: str, params: tuple = ()) -> list[sqlite3.Row]:
-        try:
-            with self._lock:
-                conn = self._get_conn()
-                return conn.execute(query, params).fetchall()
-        except Exception as exc:
-            logger.warning("DB read error: %s", exc)
-            return []
-
-    def get_all(self, limit: int = 1000) -> list[dict[str, Any]]:
-        rows = self._safe_rows(
-            "SELECT * FROM log_entries ORDER BY timestamp DESC LIMIT ?", (limit,)
+            self._pool_loop = current_loop
+        return self._pool
+            
+    async def get_all(self, limit: int = 1000) -> list[dict[str, Any]]:
+        pool = await self._get_pool()
+        rows = await pool.fetch(
+            "SELECT * FROM log_entries ORDER BY timestamp DESC LIMIT $1", 
+            limit,
         )
         results = []
         for r in rows:
             d = dict(r)
-            d["metadata"] = json.loads(d.get("metadata_json", "{}"))
+            d["metadata"] = json.loads(d.get("metadata") or "{}")
             results.append(d)
         return results
 
-    def get_stats(self) -> dict[str, Any]:
+    async def get_stats(self) -> dict[str, Any]:
         try:
-            with self._lock:
-                conn = self._get_conn()
-                total    = conn.execute("SELECT COUNT(*) FROM log_entries").fetchone()[0]
-                sessions = conn.execute("SELECT COUNT(DISTINCT session_id) FROM log_entries").fetchone()[0]
-                by_type  = conn.execute(
-                    "SELECT interaction_type, COUNT(*) as cnt FROM log_entries GROUP BY interaction_type"
-                ).fetchall()
-                by_ns    = conn.execute(
-                    "SELECT namespace, COUNT(*) as cnt FROM log_entries GROUP BY namespace ORDER BY cnt DESC LIMIT 10"
-                ).fetchall()
-                avg_lat  = conn.execute(
-                    "SELECT AVG(latency_ms) FROM log_entries WHERE latency_ms IS NOT NULL"
-                ).fetchone()[0]
-                errors   = conn.execute(
-                    "SELECT COUNT(*) FROM log_entries WHERE interaction_type = 'error'"
-                ).fetchone()[0]
-                tool_lats = conn.execute(
-                    """SELECT tool_name, AVG(latency_ms) as avg_lat, COUNT(*) as cnt
-                       FROM log_entries
-                       WHERE tool_name IS NOT NULL AND latency_ms IS NOT NULL
-                       GROUP BY tool_name"""
-                ).fetchall()
+            pool = await self._get_pool()
+            total    = await pool.fetchval("SELECT COUNT(*) FROM log_entries")
+            sessions = await pool.fetchval("SELECT COUNT(DISTINCT session_id) FROM log_entries")
+            by_type  = await pool.fetch(
+                "SELECT interaction_type, COUNT(*) as cnt FROM log_entries GROUP BY interaction_type"
+            )
+            by_ns    = await pool.fetch(
+                "SELECT namespace, COUNT(*) as cnt FROM log_entries GROUP BY namespace ORDER BY cnt DESC LIMIT 10"
+            )
+            avg_lat  = await pool.fetchval(
+                "SELECT AVG(latency_ms) FROM log_entries WHERE latency_ms IS NOT NULL"
+            )
+            errors   = await pool.fetchval(
+                "SELECT COUNT(*) FROM log_entries WHERE interaction_type = 'error'"
+            )
+            tool_lats = await pool.fetch(
+                """SELECT tool_name, AVG(latency_ms) as avg_lat, COUNT(*) as cnt
+                    FROM log_entries
+                    WHERE tool_name IS NOT NULL AND latency_ms IS NOT NULL
+                    GROUP BY tool_name"""
+            )
 
             return {
                 "total_entries":       total,
                 "total_sessions":      sessions,
-                "by_interaction_type": {r[0]: r[1] for r in by_type},
-                "by_namespace":        {r[0]: r[1] for r in by_ns},
+                "by_interaction_type": {r["interaction_type"]: r["cnt"] for r in by_type},
+                "by_namespace":        {r["namespace"]: r["cnt"] for r in by_ns},
                 "avg_latency_ms":      avg_lat,
                 "error_count":         errors,
                 "tool_latencies":      [dict(r) for r in tool_lats],
@@ -146,25 +120,31 @@ class SharedLogStoreReader:
                 "avg_latency_ms": None, "error_count": 0, "tool_latencies": [],
             }
 
-    def get_sessions(self) -> list[str]:
-        rows = self._safe_rows(
+    async def get_sessions(self) -> list[str]:
+        pool = await self._get_pool()
+        rows = await pool.fetch(
             """
             SELECT session_id
-            FROM log_entries
-            GROUP BY session_id
-            ORDER BY MIN(timestamp) ASC
+            FROM sessions
+            ORDER BY started_at ASC
             """
         )
-        return [r[0] for r in rows]
+        return [r["session_id"] for r in rows]
 
-    def get_by_session(self, session_id: str) -> list[dict[str, Any]]:
-        rows = self._safe_rows(
-            "SELECT * FROM log_entries WHERE session_id = ? ORDER BY timestamp ASC",
-            (session_id,),
+    async def get_by_session(self, session_id: str) -> list[dict[str, Any]]:
+        pool = await self._get_pool()
+        rows = await pool.fetch(
+            """
+            SELECT * FROM log_entries le
+            JOIN sessions s ON s.id = le.session_id
+            WHERE s.session_id = $1 
+            ORDER BY le.timestamp ASC
+            """,
+            session_id,
         )
         return [dict(r) for r in rows]
 
-    def search(
+    async def search(
         self,
         query: str,
         k: int = 10,
@@ -175,59 +155,67 @@ class SharedLogStoreReader:
         query_vec = _embedder.embed(query)
         is_stub   = all(v == 0.0 for v in query_vec)
 
+        pool = await self._get_pool()
+
         clauses: list[str] = []
         params:  list[Any] = []
+
         if namespace_prefix:
-            clauses.append("namespace LIKE ?")
             params.append(f"{namespace_prefix}%")
+            clauses.append(f"namespace LIKE ${len(params)}")
         if session_id:
-            clauses.append("session_id = ?")
             params.append(session_id)
+            clauses.append(f"session_id = (SELECT id FROM sessions WHERE session_id = ${len(params)})")
         if interaction_type:
-            clauses.append("interaction_type = ?")
             params.append(interaction_type)
+            clauses.append(f"interaction_type = ${len(params)}")
+
 
         where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
-        rows  = self._safe_rows(
-            f"SELECT * FROM log_entries {where} ORDER BY timestamp DESC LIMIT 500",
-            tuple(params),
-        )
+        
+        if is_stub:
+                params.append(f"%{query.lower()}%")
+                clauses_kw = where + (" AND " if where else "WHERE ") + f"LOWER(content) LIKE ${len(params)}"
+                rows = await pool.fetch(
+                    f"SELECT *, 1.0 AS score FROM log_entries {clauses_kw} "
+                    f"ORDER BY timestamp DESC LIMIT {k}",
+                    *params
+                )
+        else:
+            params.append(embedding_query := query_vec)
+            emb_param = f"${len(params)}"
+            rows = await pool.fetch(
+                f"""
+                SELECT *, 1 - (embedding <=> {emb_param}) AS score
+                FROM log_entries
+                {where}
+                ORDER BY embedding <=> {emb_param}
+                LIMIT {k}
+                """,
+                *params,    
+            )
 
         results = []
         for row in rows:
-            d = dict(row)
-            if is_stub:
-                score = float(query.lower() in d.get("content", "").lower())
-            else:
-                emb_raw = d.get("embedding_json")
-                if not emb_raw:
-                    score = 0.0
-                else:
-                    stored = json.loads(emb_raw)
-                    score  = _cosine(query_vec, stored)
-            d["_score"]   = score
-            d["metadata"] = json.loads(d.get("metadata_json", "{}"))
-            results.append(d)
-
-        results.sort(key=lambda r: r["_score"], reverse=True)
-        return results[:k]
-
-    def close(self) -> None:
-        with self._lock:
-            if self._conn:
-                self._conn.close()
-                self._conn = None
+            row_dict = dict(row)
+            row_dict["_score"] = row_dict.pop("score")
+            results.append(row_dict)
+        return results
+    
+    async def close(self) -> None:
+        if self._pool:
+            await self._pool.close()
+            self._pool = None
 
 
 _reader_instance: SharedLogStoreReader | None = None
 
 
-def get_shared_log_store(db_path: str | Path | None = None) -> SharedLogStoreReader:
+def get_shared_log_store(dsn: str | None = None) -> SharedLogStoreReader:
     global _reader_instance
     if _reader_instance is None:
-        if db_path is None or str(db_path) == "":
-            _repo_root = Path(__file__).resolve().parents[3]
-            db_path    = _repo_root / "mcp_agent_log.db"
-        _reader_instance = SharedLogStoreReader(db_path)
-        logger.info("SharedLogStoreReader initialised at %s", db_path)
+        dsn = dsn or os.getenv("SUPABASE_DB_URL")
+        if not dsn:
+            raise RuntimeError("SUPABASE_DB_URL environment variable is not set.")
+        _reader_instance = SharedLogStoreReader(dsn)
     return _reader_instance

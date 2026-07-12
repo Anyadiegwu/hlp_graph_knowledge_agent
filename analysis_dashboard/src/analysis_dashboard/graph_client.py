@@ -193,23 +193,12 @@ class Neo4jGraphClient:
         call_id: str,
         edge_type: str = "ROUTED_TO",
     ) -> dict[str, Any]:
-        """
-        Create a directed edge between an AgentAction and an MCPServerCall.
-        edge_type: ROUTED_TO | DEPENDS_ON
-        """
         if not self._connected:
             return {"error": "Not connected to Neo4j"}
 
         if edge_type not in ("ROUTED_TO", "DEPENDS_ON"):
             edge_type = "ROUTED_TO"
 
-        query = f"""
-        MATCH (a:AgentAction   {{action_id: $action_id}})
-        MATCH (m:MCPServerCall {{call_id:   $call_id}})
-        MERGE (a)-[:{edge_type}]->(m)
-        RETURN type(relationships(path)[0]) as edge_type
-        """
-        # Rewrite without path syntax (Neo4j community compat)
         query = f"""
         MATCH (a:AgentAction   {{action_id: $action_id}})
         MATCH (m:MCPServerCall {{call_id:   $call_id}})

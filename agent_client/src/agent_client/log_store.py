@@ -1,17 +1,18 @@
 from __future__ import annotations
 
+import os
 import json
 import logging
-import sqlite3
-import threading
-import time
+import asyncpg
+from pgvector.asyncpg import register_vector
 import uuid
 from datetime import datetime, timezone
 from enum import Enum
-from pathlib import Path
 from typing import Any, Optional
-
+from dotenv import find_dotenv, load_dotenv
 from pydantic import BaseModel, Field, field_validator
+
+load_dotenv(find_dotenv(".env"))
 
 logger = logging.getLogger("agent.log_store")
 
@@ -153,6 +154,7 @@ class _EmbeddingProvider:
             self._model = GoogleGenerativeAIEmbeddings(
                 model="models/gemini-embedding-001",
                 google_api_key=api_key,
+                output_dimensionality=768,
             )
             logger.info("Embedding model loaded: models/gemini-embedding-001")
         except Exception as exc:
@@ -198,103 +200,86 @@ class HLPLogStore:
       embedding_json TEXT    — JSON-serialised float list (nullable)
     """
 
-    _CREATE_TABLE = """
-    CREATE TABLE IF NOT EXISTS log_entries (
-        id               INTEGER PRIMARY KEY AUTOINCREMENT,
-        namespace        TEXT    NOT NULL,
-        store_key        TEXT    NOT NULL,
-        session_id       TEXT    NOT NULL,
-        interaction_type TEXT    NOT NULL,
-        component        TEXT    NOT NULL DEFAULT 'unknown',
-        tool_name        TEXT,
-        latency_ms       REAL,
-        token_count      INTEGER,
-        content          TEXT    NOT NULL,
-        metadata_json    TEXT    NOT NULL DEFAULT '{}',
-        timestamp        TEXT    NOT NULL,
-        embedding_json   TEXT,
-        UNIQUE(namespace, store_key)
-    );
-    CREATE INDEX IF NOT EXISTS idx_namespace  ON log_entries(namespace);
-    CREATE INDEX IF NOT EXISTS idx_session    ON log_entries(session_id);
-    CREATE INDEX IF NOT EXISTS idx_type       ON log_entries(interaction_type);
-    CREATE INDEX IF NOT EXISTS idx_timestamp  ON log_entries(timestamp);
-    CREATE INDEX IF NOT EXISTS idx_tool       ON log_entries(tool_name);
-    """
-
-    def __init__(self, db_path: str | Path) -> None:
-        self.db_path = Path(db_path)
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._lock = threading.Lock()
-        self._conn: sqlite3.Connection | None = None
-        self._init_db()
-        logger.info("HLPLogStore initialised at %s", self.db_path)
-
-    def _get_conn(self) -> sqlite3.Connection:
-        if self._conn is None:
-            self._conn = sqlite3.connect(
-                str(self.db_path),
-                check_same_thread=False,
-                timeout=30,
+    def __init__(self, dsn: str) -> None:
+        self.dsn = dsn
+        self._pool: asyncpg.Pool | None = None
+    
+    async def _get_pool(self) -> asyncpg.Pool:
+        if self._pool is None:
+            self._pool = await asyncpg.create_pool(
+                dsn=self.dsn, 
+                min_size=2, 
+                max_size=10,
+                init=register_vector,
+                statement_cache_size=0,
             )
-            self._conn.row_factory = sqlite3.Row
-        return self._conn
+            logger.info("HLPLogStore connected to SUpabase (pooled)")
+        return self._pool
+    
+    async def _get_or_create_session_row(
+            self, pool: asyncpg.Pool, session_id: str, component: str
+    ) -> Any:
+        """Ensure a sessions row exists for this app-level session_id; return its internal uuid id."""
+        row = await pool.fetchrow(
+            """
+            INSERT INTO  sessions (session_id, component)
+            VALUES ($1, $2)
+            ON CONFLICT (session_id) DO UPDATE
+                SET component = EXCLUDED.component
+            RETURNING id
+            """, 
+            session_id, 
+            component
+        )
+        return row['id']
 
-    def _init_db(self) -> None:
-        with self._lock:
-            conn = self._get_conn()
-            conn.executescript(self._CREATE_TABLE)
-            conn.commit()
-
-    def put(self, entry: LogEntry, embed: bool = True) -> None:
+    async def put(self, entry: LogEntry, embed: bool = True) -> None:
         """
-        Persist a LogEntry to the store.
+        Persist a LogEntry to Supabase (sessions + log_entries).
 
         Parameters
         ----------
         entry : LogEntry   The validated log entry to persist.
         embed : bool       Whether to compute and store the embedding vector.
-                           Set False for high-frequency low-value log lines
-                           to avoid API rate limits.
         """
         embedding: list[float] | None = None
         if embed:
             embedding = _embedder.embed(entry.content)
-
-        ns_str  = entry.namespace_path
-        key_str = entry.store_key()
-
-        # Repair integer keys before JSON serialisation
+        
         safe_meta = {str(k): v for k, v in entry.metadata.items()}
 
-        with self._lock:
-            conn = self._get_conn()
-            conn.execute(
-                """
-                INSERT OR REPLACE INTO log_entries
-                  (namespace, store_key, session_id, interaction_type,
-                   component, tool_name, latency_ms, token_count,
-                   content, metadata_json, timestamp, embedding_json)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    ns_str,
-                    key_str,
-                    entry.session_id,
-                    entry.mcp_interaction_type.value,
-                    entry.component,
-                    entry.tool_name,
-                    entry.latency_ms,
-                    entry.token_count,
-                    entry.content,
-                    json.dumps(safe_meta),
-                    entry.timestamp,
-                    json.dumps(embedding) if embedding is not None else None,
-                ),
-            )
-            conn.commit()
+        pool =  await self._get_pool()
+        session_row_id = await self._get_or_create_session_row(
+            pool, entry.session_id, entry.component
+        )
 
-    def search(
+        await pool.execute(
+            """
+            INSERT INTO log_entries
+                (session_id, namespace, store_key, interaction_type,
+                 component, tool_name, latency_ms, token_count,
+                 content, metadata, timestamp, embedding)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            ON CONFLICT (namespace, store_key) DO UPDATE SET
+                content = EXCLUDED.content,
+                metadata = EXCLUDED.metadata,
+                embedding = EXCLUDED.embedding
+            """,
+            session_row_id,
+            entry.namespace_path,
+            entry.store_key(),
+            entry.mcp_interaction_type.value,
+            entry.component,
+            entry.tool_name,
+            entry.latency_ms,
+            entry.token_count,
+            entry.content,
+            json.dumps(safe_meta),
+            datetime.fromisoformat(entry.timestamp),
+            embedding if embedding is not None else None
+        )
+
+    async def search(
         self,
         query: str,
         k: int = 10,
@@ -303,170 +288,157 @@ class HLPLogStore:
         interaction_type: str | None = None,
     ) -> list[dict[str, Any]]:
         """
-        Cosine-similarity semantic search over stored embeddings.
+        Vector similarity search stored embeddings using pgvector's 
+        cosine-distance operator (<=>), backed by the hnsw index on 
+        log_entries.embedding.
 
         Falls back to keyword substring match when embeddings are stubs
         (i.e. when GEMINI_API_KEY is not set).
-
-        Parameters
-        ----------
-        query            : Natural language search query.
-        k                : Maximum results to return.
-        namespace_prefix : If set, restrict search to namespaces starting with this prefix.
-        session_id       : If set, restrict to a specific session.
-        interaction_type : If set, restrict to a specific MCPInteractionType value.
         """
         query_vec = _embedder.embed(query)
         is_stub = all(v == 0.0 for v in query_vec)
 
-        with self._lock:
-            conn = self._get_conn()
-            clauses: list[str] = []
-            params: list[Any] = []
+        pool = await self._get_pool()
 
-            if namespace_prefix:
-                clauses.append("namespace LIKE ?")
-                params.append(f"{namespace_prefix}%")
-            if session_id:
-                clauses.append("session_id = ?")
-                params.append(session_id)
-            if interaction_type:
-                clauses.append("interaction_type = ?")
-                params.append(interaction_type)
+        clauses: list[str] = []
+        params: list[Any] = []
 
-            where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
-            rows = conn.execute(
-                f"SELECT * FROM log_entries {where} ORDER BY timestamp DESC LIMIT 500",
-                params,
-            ).fetchall()
+        if namespace_prefix:
+            params.append(f"{namespace_prefix}%")
+            clauses.append(f"namespace LIKE ${len(params)}")
+        if session_id:
+            params.append(session_id)
+            clauses.append(f"session_id = (SELECT id FROM sessions WHERE session_id = ${len(params)})")
+        if interaction_type:
+            params.append(interaction_type)
+            clauses.append(f"interaction_type = ${len(params)}")
+
+        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+        
+        if is_stub:
+            params.append(f"%{query.lower()}%")
+            clauses_kw = where + (" AND " if where else "WHERE ") + f"LOWER(content) LIKE ${len(params)}"
+            rows = await pool.fetch(
+                f"SELECT *, 1.0 AS score FROM log_entries {clauses_kw} "
+                f"ORDER BY timestamp DESC LIMIT {k}",
+                *params
+            )
+        else:
+            params.append(embedding_query := query_vec)
+            emb_param = f"${len(params)}"
+            rows = await pool.fetch(
+                f"""
+                SELECT *, 1 - (embedding <=> {emb_param}) AS score
+                FROM log_entries
+                {where}
+                ORDER BY embedding <=> {emb_param}
+                LIMIT {k}
+                """,
+                *params,    
+            )
 
         results = []
         for row in rows:
             row_dict = dict(row)
-            if is_stub:
-                # Keyword fallback
-                score = float(query.lower() in row_dict["content"].lower())
-            else:
-                emb_raw = row_dict.get("embedding_json")
-                if not emb_raw:
-                    score = 0.0
-                else:
-                    stored_vec: list[float] = json.loads(emb_raw)
-                    score = self._cosine(query_vec, stored_vec)
-            row_dict["_score"] = score
-            row_dict["metadata"] = json.loads(row_dict.get("metadata_json", "{}"))
+            row_dict["_score"] = row_dict.pop("score")
             results.append(row_dict)
+        return results
 
-        results.sort(key=lambda r: r["_score"], reverse=True)
-        return results[:k]
-
-    @staticmethod
-    def _cosine(a: list[float], b: list[float]) -> float:
-        """Pure-Python cosine similarity — avoids numpy dependency in client."""
-        if len(a) != len(b):
-            return 0.0
-        dot = sum(x * y for x, y in zip(a, b))
-        norm_a = sum(x * x for x in a) ** 0.5
-        norm_b = sum(x * x for x in b) ** 0.5
-        if norm_a == 0 or norm_b == 0:
-            return 0.0
-        return dot / (norm_a * norm_b)
-
-    def list_namespace(self, namespace_prefix: str) -> list[dict[str, Any]]:
-        """Return all entries under a namespace prefix, ordered by timestamp."""
-        with self._lock:
-            conn = self._get_conn()
-            rows = conn.execute(
-                "SELECT * FROM log_entries WHERE namespace LIKE ? ORDER BY timestamp ASC",
-                (f"{namespace_prefix}%",),
-            ).fetchall()
+    async def list_namespace(self, namespace_prefix: str) -> list[dict[str, Any]]:
+        pool = await self._get_pool()
+        rows = await pool.fetch(
+            "SELECT * FROM log_entries WHERE namespace LIKE $1 ORDER BY timestamp ASC",
+            (f"{namespace_prefix}%",),
+        )
         return [dict(r) for r in rows]
-
-    def get_all(self, limit: int = 1000) -> list[dict[str, Any]]:
-        """Dump all entries for the analysis agent to process."""
-        with self._lock:
-            conn = self._get_conn()
-            rows = conn.execute(
-                "SELECT * FROM log_entries ORDER BY timestamp DESC LIMIT ?",
-                (limit,),
-            ).fetchall()
+    
+    async def get_all(self, limit: int = 1000) -> list[dict[str, Any]]:
+        pool = await self._get_pool()
+        rows = await pool.fetch(
+            "SELECT * FROM log_entries ORDER BY timestamp DESC LIMIT $1",
+            limit,
+        )
         results = []
         for r in rows:
             d = dict(r)
-            d["metadata"] = json.loads(d.get("metadata_json", "{}"))
+            d["metadata"] = json.loads(d.get("metadata") or "{}")
             results.append(d)
         return results
 
-    def get_sessions(self) -> list[str]:
-        """Return distinct session IDs ordered by first-seen timestamp."""
-        with self._lock:
-            conn = self._get_conn()
-            rows = conn.execute(
-                "SELECT DISTINCT session_id FROM log_entries ORDER BY MIN(timestamp) ASC",
-            ).fetchall()
-        return [r[0] for r in rows]
+    async def get_sessions(self) -> list[str]:
+        pool = await self._get_pool()
+        rows = await pool.fetch(
+            """
+            SELECT session_id 
+            FROM sessions 
+            ORDER BY started_at ASC
+            """
+        )
+        return [r["session_id"] for r in rows]
 
-    def get_by_session(self, session_id: str) -> list[dict[str, Any]]:
-        """All entries for a given session, ordered by timestamp."""
-        with self._lock:
-            conn = self._get_conn()
-            rows = conn.execute(
-                "SELECT * FROM log_entries WHERE session_id = ? ORDER BY timestamp ASC",
-                (session_id,),
-            ).fetchall()
+    async def get_by_session(self, session_id: str) -> list[dict[str, Any]]:
+        pool = await self._get_pool()
+        rows = await pool.fetch(
+            """
+            SELECT * FROM log_entries le
+            JOIN sessions s ON s.id = le.session_id
+            WHERE s.session_id = $1 
+            ORDER BY le.timestamp ASC
+            """,
+            session_id,
+        )
         return [dict(r) for r in rows]
 
-    def get_stats(self) -> dict[str, Any]:
-        """Aggregate stats for the dashboard overview."""
-        with self._lock:
-            conn = self._get_conn()
-            total     = conn.execute("SELECT COUNT(*) FROM log_entries").fetchone()[0]
-            sessions  = conn.execute("SELECT COUNT(DISTINCT session_id) FROM log_entries").fetchone()[0]
-            by_type   = conn.execute(
-                "SELECT interaction_type, COUNT(*) as cnt FROM log_entries GROUP BY interaction_type"
-            ).fetchall()
-            by_ns     = conn.execute(
-                "SELECT namespace, COUNT(*) as cnt FROM log_entries GROUP BY namespace ORDER BY cnt DESC LIMIT 10"
-            ).fetchall()
-            avg_lat   = conn.execute(
-                "SELECT AVG(latency_ms) FROM log_entries WHERE latency_ms IS NOT NULL"
-            ).fetchone()[0]
-            errors    = conn.execute(
-                "SELECT COUNT(*) FROM log_entries WHERE interaction_type = 'error'"
-            ).fetchone()[0]
-            tool_lats = conn.execute(
-                """SELECT tool_name, AVG(latency_ms) as avg_lat, COUNT(*) as cnt
-                   FROM log_entries
-                   WHERE tool_name IS NOT NULL AND latency_ms IS NOT NULL
-                   GROUP BY tool_name"""
-            ).fetchall()
-
+    async def get_stats(self) -> dict[str, Any]:
+        pool = await self._get_pool()
+        total    = await pool.fetchval("SELECT COUNT(*) FROM log_entries")
+        sessions = await pool.fetchval("SELECT COUNT(*) FROM sessions")
+        by_type  = await pool.fetch(
+            "SELECT interaction_type, COUNT(*) as cnt FROM log_entries GROUP BY interaction_type"
+        )
+        by_ns    = await pool.fetch(
+            "SELECT namespace, COUNT(*) as cnt FROM log_entries GROUP BY namespace ORDER BY cnt DESC LIMIT 10"
+        )
+        avg_lat  = await pool.fetchval(
+            "SELECT AVG(latency_ms) FROM log_entries WHERE latency_ms IS NOT NULL"
+        )
+        errors   = await pool.fetchval(
+            "SELECT COUNT(*) FROM log_entries WHERE interaction_type = 'error'"
+        )
+        tool_lats = await pool.fetch(
+            """SELECT tool_name, AVG(latency_ms) as avg_lat, COUNT(*) as cnt
+               FROM log_entries
+               WHERE tool_name IS NOT NULL AND latency_ms IS NOT NULL
+               GROUP BY tool_name"""
+        )
         return {
             "total_entries":    total,
             "total_sessions":   sessions,
-            "by_interaction_type": {r[0]: r[1] for r in by_type},
-            "by_namespace":     {r[0]: r[1] for r in by_ns},
+            "by_interaction_type": {r["interaction_type"]: r["cnt"] for r in by_type},
+            "by_namespace":     {r["namespace"]: r["cnt"] for r in by_ns},
             "avg_latency_ms":   avg_lat,
             "error_count":      errors,
             "tool_latencies":   [dict(r) for r in tool_lats],
         }
 
-    def close(self) -> None:
-        with self._lock:
-            if self._conn:
-                self._conn.close()
-                self._conn = None
+    async def close(self) -> None:
+        if self._pool:
+            await self._pool.close()
+            self._pool = None
+            logger.info("HLPLogStore connection pool closed")
 
 
 _store_instance: HLPLogStore | None = None
 
 
-def get_log_store(db_path: str | Path | None = None) -> HLPLogStore:
+def get_log_store(dsn: str | None = None) -> HLPLogStore:
     """Return the singleton HLPLogStore, creating it if necessary."""
     global _store_instance
     if _store_instance is None:
-        if db_path is None:
-            _repo_root = Path(__file__).resolve().parents[3]
-            db_path = _repo_root / "mcp_agent_log.db"
-        _store_instance = HLPLogStore(db_path)
+        dsn = dsn or os.getenv("SUPABASE_DB_URL")
+        if not dsn:
+            raise RuntimeError(
+                "SUPABASE_DB_URL environment variable not set. "
+                )
+        _store_instance = HLPLogStore(dsn)
     return _store_instance

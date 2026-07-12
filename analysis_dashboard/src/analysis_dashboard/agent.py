@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 import json
+import time
 import logging
 import sys
 from pathlib import Path
 from typing import Annotated, Any, Optional
 import operator
-
-from dotenv import find_dotenv, load_dotenv
-
-load_dotenv(find_dotenv(".env"))
-
+import asyncio
+from dotenv import find_dotenv
+import hashlib
+import redis as redis_client_lib
 from langchain.tools import tool
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
@@ -45,13 +45,10 @@ class AnalysisSettings(BaseSettings):
     gemini_api_key:    SecretStr | None = None
     gemini_model_name: str              = "gemini-2.5-flash"
     model_temperature: float            = 0.0
-
     neo4j_uri:         str              = ""
     neo4j_username:    str              = "neo4j"
     neo4j_password:    SecretStr | None = None
-
-    log_db_path:       str              = ""
-    chart_output_dir:  str              = "./charts"
+    redis_url:         SecretStr | None = None
 
     model_config = SettingsConfigDict(
         env_file=find_dotenv(".env"),
@@ -59,13 +56,64 @@ class AnalysisSettings(BaseSettings):
         extra="ignore",
     )
 
-
 settings = AnalysisSettings()
 
+_tier2_redis: "redis_client_lib.Redis | None" = None
 
+def _tier2_cache_client():
+    global _tier2_redis
+    if _tier2_redis is None:
+        if not settings.redis_url:
+            return None
+        _tier2_redis = redis_client_lib.from_url(settings.redis_url.get_secret_value())
+    return _tier2_redis
+
+def _tier2_get_or_compute(cache_key: str, compute_fn, ttl_seconds: int = 3600) -> str:
+    """
+    Exact-match cache for Tier 2 (Neo4j subgraphs + SHAP/LIME results).
+    Returns a JSON string, either from Redis or freshly computed via compute_fn().
+    """
+    client = _tier2_cache_client()
+    full_key = f"hlp:cache:tier2:{cache_key}"
+
+    if client is not None:
+        start = time.perf_counter()
+        cached = client.get(full_key)
+        if cached is not None:
+            elapsed_ms = (time.perf_counter() - start) * 1000
+            client.incr("hlp:cache:tier2:hits")
+            client.incrbyfloat("hlp:cache:tier2:latency_sum_hit", elapsed_ms)
+            client.incr("hlp:cache:tier2:latency_count_hit")
+            agent_logger.info("Tier 2 cache HIT: %s", cache_key)
+            return cached.decode("utf-8")
+        client.incr("hlp:cache:tier2:misses")
+
+    start = time.perf_counter()
+    result = compute_fn()
+    elapsed_ms = (time.perf_counter() - start) * 1000
+    if client is not None:
+        client.setex(full_key, ttl_seconds, result)
+        client.incrbyfloat("hlp:cache:tier2:latency_sum_miss", elapsed_ms)
+        client.incr("hlp:cache:tier2:latency_count_miss")
+        
+    return result
+
+def _run_async(coro):
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                future = pool.submit(asyncio.run, coro)
+                return future.result()
+        else:
+            return loop.run_until_complete(coro)
+    except RuntimeError:
+        return asyncio.run(coro)
+    
 def _get_log_store():
     from analysis_dashboard.store_reader import get_shared_log_store
-    return get_shared_log_store(settings.log_db_path or None)
+    return get_shared_log_store()
 
 
 def _get_graph_client():
@@ -160,13 +208,13 @@ def semantic_log_search(
     if store is None:
         return json.dumps({"error": "Log store not available. Check LOG_DB_PATH."})
 
-    results = store.search(
+    results = _run_async(store.search(
         query=query,
         k=k,
         namespace_prefix=namespace_prefix,
         session_id=session_id,
         interaction_type=interaction_type,
-    )
+    ))
     clean = []
     for r in results:
         r.pop("embedding_json", None)
@@ -194,8 +242,8 @@ def get_log_statistics() -> str:
     if store is None:
         return json.dumps({"error": "Log store not available."})
 
-    stats    = store.get_stats()
-    sessions = store.get_sessions()
+    stats    = _run_async(store.get_stats())
+    sessions = _run_async(store.get_sessions())
     stats["session_ids"] = sessions
     agent_logger.info(
         "Stats: total=%d sessions=%d errors=%d",
@@ -239,9 +287,9 @@ def sync_graph_to_neo4j(session_id: Optional[str] = None) -> str:
         return json.dumps({"error": "Log store not available."})
 
     if session_id:
-        entries = store.get_by_session(session_id)
+        entries = _run_async(store.get_by_session(session_id))
     else:
-        entries = store.get_all(limit=5000)
+        entries = _run_async(store.get_all(limit=5000))
 
     from analysis_dashboard.graph_client import project_logs_to_graph
     result = project_logs_to_graph(entries, graph)
@@ -281,7 +329,7 @@ def latency_trend_chart(
     if store is None:
         return json.dumps({"error": "Log store not available."})
 
-    entries = store.get_all(limit=2000)
+    entries = _run_async(store.get_all(limit=2000))
     from analysis_dashboard.analytics import compute_latency_trend
     result = compute_latency_trend(entries, window=window, save_path=save_path)
     agent_logger.info("latency_trend_chart: %s", result.get("summary", "")[:120])
@@ -310,7 +358,7 @@ def token_metrics_chart(save_path: Optional[str] = None) -> str:
     if store is None:
         return json.dumps({"error": "Log store not available."})
 
-    entries = store.get_all(limit=2000)
+    entries = _run_async(store.get_all(limit=2000))
     from analysis_dashboard.analytics import compute_token_metrics
     result = compute_token_metrics(entries, save_path=save_path)
     agent_logger.info("token_metrics_chart: %s", result.get("summary", "")[:120])
@@ -343,7 +391,7 @@ def error_frequency_chart(
     if store is None:
         return json.dumps({"error": "Log store not available."})
 
-    entries = store.get_all(limit=2000)
+    entries = _run_async(store.get_all(limit=2000))
     from analysis_dashboard.analytics import compute_error_frequency
     result = compute_error_frequency(entries, window_minutes=window_minutes, save_path=save_path)
     agent_logger.info("error_frequency_chart: %s", result.get("summary", "")[:120])
@@ -370,7 +418,7 @@ def full_dashboard_chart(save_path: Optional[str] = None) -> str:
     if store is None:
         return json.dumps({"error": "Log store not available."})
 
-    entries = store.get_all(limit=2000)
+    entries = _run_async(store.get_all(limit=2000))
     from analysis_dashboard.analytics import generate_dashboard_chart
     result = generate_dashboard_chart(entries, save_path=save_path)
     agent_logger.info("full_dashboard_chart: %s", result.get("summary", "")[:120])
@@ -424,123 +472,125 @@ def fetch_neo4j_subgraph(
         return json.dumps({"error": "Neo4j driver not connected."})
 
     safe_hop_depth = max(1, min(int(hop_depth), 5))
+    cache_key = f"subgraph:{session_id or ''}:{trace_id or ''}:{safe_hop_depth}"
+    def _compute() -> str:
+        if session_id:
+            cypher = (
+                "MATCH (s:Session {session_id: $anchor_id}) "
+                "OPTIONAL MATCH path1 = (s)-[:TRIGGERED]->(a:AgentAction) "
+                "OPTIONAL MATCH path2 = (a)-[:ROUTED_TO]->(m:MCPServerCall) "
+                f"OPTIONAL MATCH path3 = (m)-[:DEPENDS_ON*1..{safe_hop_depth}]->(m2:MCPServerCall) "
+                "RETURN s, collect(DISTINCT a) AS agent_actions, "
+                "collect(DISTINCT m) AS mcp_calls, collect(DISTINCT m2) AS chained_calls"
+            )
+            anchor_id = session_id
+        elif trace_id:
+            cypher = (
+                "MATCH (anchor) WHERE anchor.action_id = $anchor_id OR anchor.call_id = $anchor_id "
+                "OPTIONAL MATCH path1 = (s:Session)-[:TRIGGERED]->(anchor) "
+                "OPTIONAL MATCH path2 = (anchor)-[:ROUTED_TO]->(m:MCPServerCall) "
+                f"OPTIONAL MATCH path3 = (anchor)-[:DEPENDS_ON*1..{safe_hop_depth}]->(m2:MCPServerCall) "
+                "RETURN s, anchor, collect(DISTINCT m) AS mcp_calls, "
+                "collect(DISTINCT m2) AS chained_calls"
+            )
+            anchor_id = trace_id
+        else:
+            cypher = (
+                "MATCH (s:Session) "
+                "WITH s ORDER BY s.created_at DESC LIMIT 5 "
+                "OPTIONAL MATCH (s)-[:TRIGGERED]->(a:AgentAction) "
+                "OPTIONAL MATCH (a)-[:ROUTED_TO]->(m:MCPServerCall) "
+                "RETURN s, collect(DISTINCT a) AS agent_actions, collect(DISTINCT m) AS mcp_calls"
+            )
+            anchor_id = None
 
-    if session_id:
-        cypher = (
-            "MATCH (s:Session {session_id: $anchor_id}) "
-            "OPTIONAL MATCH path1 = (s)-[:TRIGGERED]->(a:AgentAction) "
-            "OPTIONAL MATCH path2 = (a)-[:ROUTED_TO]->(m:MCPServerCall) "
-            f"OPTIONAL MATCH path3 = (m)-[:DEPENDS_ON*1..{safe_hop_depth}]->(m2:MCPServerCall) "
-            "RETURN s, collect(DISTINCT a) AS agent_actions, "
-            "collect(DISTINCT m) AS mcp_calls, collect(DISTINCT m2) AS chained_calls"
-        )
-        anchor_id = session_id
-    elif trace_id:
-        cypher = (
-            "MATCH (anchor) WHERE anchor.action_id = $anchor_id OR anchor.call_id = $anchor_id "
-            "OPTIONAL MATCH path1 = (s:Session)-[:TRIGGERED]->(anchor) "
-            "OPTIONAL MATCH path2 = (anchor)-[:ROUTED_TO]->(m:MCPServerCall) "
-            f"OPTIONAL MATCH path3 = (anchor)-[:DEPENDS_ON*1..{safe_hop_depth}]->(m2:MCPServerCall) "
-            "RETURN s, anchor, collect(DISTINCT m) AS mcp_calls, "
-            "collect(DISTINCT m2) AS chained_calls"
-        )
-        anchor_id = trace_id
-    else:
-        cypher = (
-            "MATCH (s:Session) "
-            "WITH s ORDER BY s.created_at DESC LIMIT 5 "
-            "OPTIONAL MATCH (s)-[:TRIGGERED]->(a:AgentAction) "
-            "OPTIONAL MATCH (a)-[:ROUTED_TO]->(m:MCPServerCall) "
-            "RETURN s, collect(DISTINCT a) AS agent_actions, collect(DISTINCT m) AS mcp_calls"
-        )
-        anchor_id = None
-
-    try:
-        with graph._driver.session() as neo_session:
-            result = neo_session.run(cypher, anchor_id=anchor_id)
-            records = [dict(r) for r in result]
-    except Exception as exc:
-        agent_logger.error("Cypher query failed: %s", exc)
-        return json.dumps({"error": f"Cypher execution failed: {exc}", "cypher_used": cypher})
-
-    def _node_to_dict(node) -> dict:
-        if node is None:
-            return {}
         try:
-            return dict(node.items())
-        except Exception:
-            return {"_raw": str(node)}
+            with graph._driver.session() as neo_session:
+                result = neo_session.run(cypher, anchor_id=anchor_id)
+                records = [dict(r) for r in result]
+        except Exception as exc:
+            agent_logger.error("Cypher query failed: %s", exc)
+            return json.dumps({"error": f"Cypher execution failed: {exc}", "cypher_used": cypher})
 
-    nodes: list[dict] = []
-    relationships: list[dict] = []
+        def _node_to_dict(node) -> dict:
+            if node is None:
+                return {}
+            try:
+                return dict(node.items())
+            except Exception:
+                return {"_raw": str(node)}
 
-    for record in records:
-        for key, value in record.items():
-            if value is None:
-                continue
-            if isinstance(value, list):
-                for item in value:
-                    if item is not None:
-                        nodes.append({"label": key, **_node_to_dict(item)})
-            else:
-                node_dict = _node_to_dict(value)
-                if node_dict:
-                    nodes.append({"label": key, **node_dict})
+        nodes: list[dict] = []
+        relationships: list[dict] = []
 
-    seen = set()
-    unique_nodes = []
-    for n in nodes:
-        uid = n.get("session_id") or n.get("action_id") or n.get("call_id") or str(n)
-        if uid not in seen:
-            seen.add(uid)
-            unique_nodes.append(n)
+        for record in records:
+            for key, value in record.items():
+                if value is None:
+                    continue
+                if isinstance(value, list):
+                    for item in value:
+                        if item is not None:
+                            nodes.append({"label": key, **_node_to_dict(item)})
+                else:
+                    node_dict = _node_to_dict(value)
+                    if node_dict:
+                        nodes.append({"label": key, **node_dict})
 
-    session_nodes   = [n for n in unique_nodes if "session_id" in n and "action_type" not in n]
-    action_nodes    = [n for n in unique_nodes if "action_type" in n]
-    call_nodes      = [n for n in unique_nodes if "call_id" in n]
+        seen = set()
+        unique_nodes = []
+        for n in nodes:
+            uid = n.get("session_id") or n.get("action_id") or n.get("call_id") or str(n)
+            if uid not in seen:
+                seen.add(uid)
+                unique_nodes.append(n)
 
-    context_lines = [
-        f"Neo4j Subgraph Context (anchor={anchor_id or 'recent sessions'}, hop_depth={safe_hop_depth}):",
-        f"  Sessions found    : {len(session_nodes)}",
-        f"  AgentAction nodes : {len(action_nodes)}",
-        f"  MCPServerCall nodes: {len(call_nodes)}",
-    ]
-    for s in session_nodes[:3]:
-        context_lines.append(
-            f"  Session {s.get('session_id','?')[:8]}... "
-            f"model={s.get('primary_model','?')} "
-            f"entries={s.get('total_entries','?')}"
+        session_nodes   = [n for n in unique_nodes if "session_id" in n and "action_type" not in n]
+        action_nodes    = [n for n in unique_nodes if "action_type" in n]
+        call_nodes      = [n for n in unique_nodes if "call_id" in n]
+
+        context_lines = [
+            f"Neo4j Subgraph Context (anchor={anchor_id or 'recent sessions'}, hop_depth={safe_hop_depth}):",
+            f"  Sessions found    : {len(session_nodes)}",
+            f"  AgentAction nodes : {len(action_nodes)}",
+            f"  MCPServerCall nodes: {len(call_nodes)}",
+        ]
+        for s in session_nodes[:3]:
+            context_lines.append(
+                f"  Session {s.get('session_id','?')[:8]}... "
+                f"model={s.get('primary_model','?')} "
+                f"entries={s.get('total_entries','?')}"
+            )
+        for a in action_nodes[:5]:
+            context_lines.append(
+                f"  AgentAction type={a.get('action_type','?')} "
+                f"ns={a.get('namespace','?')[:40]} "
+                f"latency={a.get('latency_ms','?')}ms"
+            )
+        for m in call_nodes[:5]:
+            context_lines.append(
+                f"  MCPCall tool={m.get('tool_name','?')} "
+                f"type={m.get('interaction_type','?')} "
+                f"latency={m.get('latency_ms','?')}ms"
+            )
+
+        context_summary = "\n".join(context_lines)
+        agent_logger.info(
+            "fetch_neo4j_subgraph: %d nodes extracted.", len(unique_nodes)
         )
-    for a in action_nodes[:5]:
-        context_lines.append(
-            f"  AgentAction type={a.get('action_type','?')} "
-            f"ns={a.get('namespace','?')[:40]} "
-            f"latency={a.get('latency_ms','?')}ms"
-        )
-    for m in call_nodes[:5]:
-        context_lines.append(
-            f"  MCPCall tool={m.get('tool_name','?')} "
-            f"type={m.get('interaction_type','?')} "
-            f"latency={m.get('latency_ms','?')}ms"
-        )
 
-    context_summary = "\n".join(context_lines)
-    agent_logger.info(
-        "fetch_neo4j_subgraph: %d nodes extracted.", len(unique_nodes)
-    )
+        return json.dumps({
+            "nodes": unique_nodes,
+            "relationships": relationships,
+            "cypher_used": cypher.strip(),
+            "context_summary": context_summary,
+            "node_counts": {
+                "sessions": len(session_nodes),
+                "agent_actions": len(action_nodes),
+                "mcp_calls": len(call_nodes),
+            },
+        }, indent=2, default=str)
 
-    return json.dumps({
-        "nodes": unique_nodes,
-        "relationships": relationships,
-        "cypher_used": cypher.strip(),
-        "context_summary": context_summary,
-        "node_counts": {
-            "sessions": len(session_nodes),
-            "agent_actions": len(action_nodes),
-            "mcp_calls": len(call_nodes),
-        },
-    }, indent=2, default=str)
-
+    return _tier2_get_or_compute(cache_key, _compute)
 
 @tool
 def run_explainability_audit(
@@ -582,16 +632,16 @@ def run_explainability_audit(
 
     resolved_session = session_id
     if not resolved_session and not trace_id:
-        sessions = store.get_sessions()
+        sessions = _run_async(store.get_sessions())
         if not sessions:
             return json.dumps({"error": "No sessions found in log store."})
         resolved_session = sessions[-1]
         agent_logger.info("No session_id provided — using most recent: %s", resolved_session[:8])
 
     if resolved_session:
-        raw_entries = store.get_by_session(resolved_session)
+        raw_entries = _run_async(store.get_by_session(resolved_session))
     else:
-        raw_entries = store.get_all(limit=top_k_logs)
+        raw_entries = _run_async(store.get_all(limit=top_k_logs))
 
     if not raw_entries:
         return json.dumps({"error": f"No log entries found for session={resolved_session}."})
@@ -617,44 +667,65 @@ def run_explainability_audit(
 
     text_entries: list = []
     structured_entries: list = []
-    lime_results: dict = {}
-    shap_results: dict = {}
 
-    try:
-        from analysis_dashboard.xai_engine import (
-            run_proxy_lime,
-            run_proxy_shap,
-        )
+    entries_fingerprint = hashlib.sha256(
+        json.dumps(target_entries, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()[:16]
+    xai_cache_key = f"xai:{entries_fingerprint}"
 
-        text_entries = [
-            e for e in target_entries
-            if e.get("mcp_interaction_type") in (
-                "error", "agent_reasoning", "tool_invocation", "sampling_request"
+    def _compute_xai() -> str:
+        text_entries_local: list = []
+        structured_entries_local: list = []
+        lime_results_local: dict = {}
+        shap_results_local: dict = {}
+
+        try:
+            from analysis_dashboard.xai_engine import (
+                run_proxy_lime,
+                run_proxy_shap,
             )
-        ]
-        lime_results = run_proxy_lime(
-            log_entries=text_entries,
-            graph_context=context_summary,
-        )
 
-        structured_entries = [
-            e for e in target_entries
-            if e.get("latency_ms") is not None or e.get("token_count") is not None
-        ]
-        shap_results = run_proxy_shap(
-            log_entries=structured_entries,
-            graph_context=context_summary,
-        )
+            text_entries_local = [
+                e for e in target_entries
+                if e.get("mcp_interaction_type") in (
+                    "error", "agent_reasoning", "tool_invocation", "sampling_request"
+                )
+            ]
+            lime_results_local = run_proxy_lime(
+                log_entries=text_entries_local,
+                graph_context=context_summary,
+            )
 
-    except ImportError as imp_err:
-        agent_logger.error("xai_engine import failed: %s", imp_err)
-        lime_results = {"error": f"xai_engine not available: {imp_err}"}
-        shap_results = {"error": f"xai_engine not available: {imp_err}"}
-    except Exception as xai_err:
-        agent_logger.error("XAI computation failed: %s", xai_err)
-        lime_results = {"error": str(xai_err)}
-        shap_results = {"error": str(xai_err)}
+            structured_entries_local = [
+                e for e in target_entries
+                if e.get("latency_ms") is not None or e.get("token_count") is not None
+            ]
+            shap_results_local = run_proxy_shap(
+                log_entries=structured_entries_local,
+                graph_context=context_summary,
+            )
 
+        except ImportError as imp_err:
+            agent_logger.error("xai_engine import failed: %s", imp_err)
+            lime_results_local = {"error": f"xai_engine not available: {imp_err}"}
+            shap_results_local = {"error": f"xai_engine not available: {imp_err}"}
+        except Exception as xai_err:
+            agent_logger.error("XAI computation failed: %s", xai_err)
+            lime_results_local = {"error": str(xai_err)}
+            shap_results_local  = {"error": str(xai_err)}
+
+        return json.dumps({
+            "text_entries_count": len(text_entries_local),
+            "structured_entries_count": len(structured_entries_local),
+            "lime_results": lime_results_local,
+            "shap_results": shap_results_local,
+            }, default=str)
+    xai_payload = json.loads(_tier2_get_or_compute(xai_cache_key, _compute_xai))
+    lime_results = xai_payload["lime_results"]
+    shap_results = xai_payload["shap_results"]
+    text_entries = [None] * xai_payload["text_entries_count"]
+    structured_entries = [None] * xai_payload["structured_entries_count"]
+    
     report = {
         "audit_metadata": {
             "session_id": resolved_session or trace_id,
@@ -976,7 +1047,6 @@ def synthesize_node(state: AnalysisState) -> Command:
             "messages":     state.messages + [AIMessage(content=final_answer)],
         },
     )
-
 
 def _compile_graph():
     builder = StateGraph(AnalysisState)
