@@ -278,7 +278,7 @@ def _render_shap_chart(shap_data: dict) -> None:
         spine.set_edgecolor("#1e3a5f")
 
     plt.tight_layout()
-    st.pyplot(fig, use_container_width=True)
+    st.pyplot(fig, width="stretch")
     plt.close(fig)
 
     st.caption(
@@ -325,7 +325,7 @@ def _render_lime_annotations(lime_data: dict) -> None:
                 df_lime.columns = ["Token", "LIME Importance"]
                 df_lime["LIME Importance"] = df_lime["LIME Importance"].round(4)
                 df_lime = df_lime.sort_values("LIME Importance", ascending=False, key=abs)
-                st.dataframe(df_lime, use_container_width=True, hide_index=True)
+                st.dataframe(df_lime, width="stretch", hide_index=True)
 
             st.caption(
                 f"n_tokens={entry.get('n_tokens', '?')}  |  "
@@ -460,7 +460,7 @@ st.markdown("""
 with st.sidebar:
     st.markdown("## 📊 System Overview")
 
-    if st.button("🔄 Refresh Stats", use_container_width=True):
+    if st.button("🔄 Refresh Stats", width="stretch"):
         st.session_state.store_stats      = None
         st.session_state.resilience_state = None
 
@@ -563,21 +563,21 @@ with st.sidebar:
     st.markdown("## ⚙️ Quick Actions")
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("📈 Latency\nChart", use_container_width=True):
+        if st.button("📈 Latency\nChart", width="stretch"):
             q = "Generate a latency trend chart for all sessions."
             st.session_state.chat_history.append({"role": "user", "content": q})
             st.session_state._trigger_query = q
     with col2:
-        if st.button("🗺️ Sync\nNeo4j", use_container_width=True):
+        if st.button("🗺️ Sync\nNeo4j", width="stretch"):
             q = "Sync all sessions to the Neo4j graph and report what was committed."
             st.session_state.chat_history.append({"role": "user", "content": q})
             st.session_state._trigger_query = q
 
     st.markdown("---")
     st.markdown("## 🔬 XAI Shortcuts")
-    if st.button("🧪 Run Audit (latest session)", use_container_width=True):
+    if st.button("🧪 Run Audit (latest session)", width="stretch"):
         st.session_state._trigger_xai_audit = True
-    if st.button("⚡ Refresh Resilience", use_container_width=True):
+    if st.button("⚡ Refresh Resilience", width="stretch"):
         st.session_state.resilience_state = None
 
 
@@ -621,7 +621,7 @@ with tab_chat:
                 label_visibility="collapsed",
             )
         with col_send:
-            submitted = st.form_submit_button("Send 🚀", use_container_width=True)
+            submitted = st.form_submit_button("Send 🚀", width="stretch")
 
     query_to_run = None
     if submitted and user_input.strip():
@@ -726,7 +726,7 @@ with tab_charts:
         for tool_name, b64 in st.session_state.last_charts.items():
             st.markdown(f"#### 📈 {tool_name.replace('_', ' ').title()}")
             try:
-                st.image(_b64_to_image(b64), use_container_width=True)
+                st.image(_b64_to_image(b64), width="stretch")
             except Exception as exc:
                 st.warning(f"Could not render chart: {exc}")
     else:
@@ -747,19 +747,19 @@ with tab_charts:
         st.session_state._trigger_query = query
 
     with ccol1:
-        if st.button("📉 Latency Trend", use_container_width=True):
+        if st.button("📉 Latency Trend", width="stretch"):
             _quick_chart("Generate a latency trend chart with moving average window of 5.")
             st.rerun()
     with ccol2:
-        if st.button("🔤 Token Metrics", use_container_width=True):
+        if st.button("🔤 Token Metrics", width="stretch"):
             _quick_chart("Generate a token metrics chart showing consumption by type.")
             st.rerun()
     with ccol3:
-        if st.button("🚨 Error Freq", use_container_width=True):
+        if st.button("🚨 Error Freq", width="stretch"):
             _quick_chart("Generate an error frequency chart.")
             st.rerun()
     with ccol4:
-        if st.button("🎛️ Full Dashboard", use_container_width=True):
+        if st.button("🎛️ Full Dashboard", width="stretch"):
             _quick_chart("Generate a full 4-panel system health dashboard chart and save it to disk.")
             st.rerun()
 
@@ -867,7 +867,7 @@ with tab_xai:
 
     with xai_col3:
         st.markdown("<br>", unsafe_allow_html=True)
-        run_audit_btn = st.button("▶ Run Audit", use_container_width=True, type="primary")
+        run_audit_btn = st.button("▶ Run Audit", width="stretch", type="primary")
 
     if getattr(st.session_state, "_trigger_xai_audit", False):
         run_audit_btn = True
@@ -1068,7 +1068,7 @@ with tab_resilience:
             })
             st.dataframe(
                 df_res.sort_values("Timestamp", ascending=False).head(50),
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
             )
 
@@ -1099,7 +1099,7 @@ with tab_resilience:
                 spine.set_edgecolor("#1e3a5f")
 
             plt.tight_layout()
-            st.pyplot(fig, use_container_width=True)
+            st.pyplot(fig, width="stretch")
             plt.close(fig)
     else:
         st.info(

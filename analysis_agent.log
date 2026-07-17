@@ -175,3 +175,141 @@
 [2026-07-12 21:47:21] [ANALYSIS_AGENT] [DEBUG] [ROUTE] synthesize_node → END
 [2026-07-12 21:47:21] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=synthesize_node routing=['synthesize_node → END']
 [2026-07-12 21:47:21] [ANALYSIS_AGENT] [INFO] Analysis query complete. steps=5 final_answer_len=5179
+[2026-07-17 12:57:12] [ANALYSIS_AGENT] [INFO] Analysis Agent log: C:\Users\Victor\My Files\Kodecamp\stage3\hlp_graph_knowledge_agent\analysis_agent.log
+[2026-07-17 12:57:12] [ANALYSIS_AGENT] [INFO] Edgeless StateGraph compiled. Nodes: ['initial_ingest_node', 'stats_node', 'search_node', 'xai_node', 'chart_node', 'synthesize_node']. Only hardcoded edge: START → initial_ingest_node.
+[2026-07-17 12:57:12] [ANALYSIS_AGENT] [INFO] Analysis agent (edgeless LangGraph) ready.
+[2026-07-17 12:57:12] [ANALYSIS_AGENT] [INFO] Analysis query: What causes latency spikes in a distributed multi-agent log analysis pipeline
+[2026-07-17 12:57:12] [ANALYSIS_AGENT] [INFO] [initial_ingest_node] query='What causes latency spikes in a distributed multi-agent log analysis pipeline' planned_route=['stats_node', 'chart_node', 'synthesize_node']
+[2026-07-17 12:57:12] [ANALYSIS_AGENT] [DEBUG] [ROUTE] initial_ingest_node → stats_node
+[2026-07-17 12:57:12] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=initial_ingest_node routing=['initial_ingest_node → stats_node']
+[2026-07-17 12:57:12] [ANALYSIS_AGENT] [INFO] [stats_node] Fetching log statistics.
+[2026-07-17 12:57:12] [ANALYSIS_AGENT] [INFO] get_log_statistics called.
+[2026-07-17 12:57:20] [ANALYSIS_AGENT] [INFO] Stats: total=1952 sessions=13 errors=19
+[2026-07-17 12:57:20] [ANALYSIS_AGENT] [INFO] [stats_node] Stats fetched (1612 chars).
+[2026-07-17 12:57:20] [ANALYSIS_AGENT] [DEBUG] [ROUTE] stats_node → chart_node
+[2026-07-17 12:57:20] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=stats_node routing=['stats_node → chart_node']
+[2026-07-17 12:57:20] [ANALYSIS_AGENT] [INFO] [chart_node] Generating chart.
+[2026-07-17 12:57:20] [ANALYSIS_AGENT] [INFO] latency_trend_chart: window=5 save_path=None
+[2026-07-17 12:57:37] [ANALYSIS_AGENT] [INFO] latency_trend_chart: Latency Summary (ms):
+  query_knowledge: mean=106905.0  median=68186.6  max=1139267.0  n=44
+  reflect_answer: mean=53209
+[2026-07-17 12:57:37] [ANALYSIS_AGENT] [INFO] [chart_node] Chart generated (832 chars).
+[2026-07-17 12:57:37] [ANALYSIS_AGENT] [DEBUG] [ROUTE] chart_node → synthesize_node
+[2026-07-17 12:57:37] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=chart_node routing=['chart_node → synthesize_node']
+[2026-07-17 12:57:37] [ANALYSIS_AGENT] [INFO] [synthesize_node] Synthesising final answer.
+[2026-07-17 12:58:01] [ANALYSIS_AGENT] [INFO] [synthesize_node] Final answer (5266 chars).
+[2026-07-17 12:58:01] [ANALYSIS_AGENT] [DEBUG] [ROUTE] synthesize_node → END
+[2026-07-17 12:58:01] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=synthesize_node routing=['synthesize_node → END']
+[2026-07-17 12:58:01] [ANALYSIS_AGENT] [INFO] Analysis query complete. steps=4 final_answer_len=5266
+[2026-07-17 13:27:44] [ANALYSIS_AGENT] [INFO] Analysis Agent log: C:\Users\Victor\My Files\Kodecamp\stage3\hlp_graph_knowledge_agent\analysis_agent.log
+[2026-07-17 13:27:45] [ANALYSIS_AGENT] [INFO] Edgeless StateGraph compiled. Nodes: ['initial_ingest_node', 'stats_node', 'search_node', 'xai_node', 'chart_node', 'synthesize_node']. Only hardcoded edge: START → initial_ingest_node.
+[2026-07-17 13:27:45] [ANALYSIS_AGENT] [INFO] Analysis agent (edgeless LangGraph) ready.
+[2026-07-17 13:27:45] [ANALYSIS_AGENT] [INFO] Analysis query: What causes latency spikes in a distributed multi-agent log analysis pipeline
+[2026-07-17 13:27:45] [ANALYSIS_AGENT] [INFO] [initial_ingest_node] query='What causes latency spikes in a distributed multi-agent log analysis pipeline' planned_route=['stats_node', 'chart_node', 'synthesize_node']
+[2026-07-17 13:27:45] [ANALYSIS_AGENT] [DEBUG] [ROUTE] initial_ingest_node → stats_node
+[2026-07-17 13:27:45] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=initial_ingest_node routing=['initial_ingest_node → stats_node']
+[2026-07-17 13:27:45] [ANALYSIS_AGENT] [INFO] [stats_node] Fetching log statistics.
+[2026-07-17 13:27:45] [ANALYSIS_AGENT] [INFO] get_log_statistics called.
+[2026-07-17 13:27:54] [ANALYSIS_AGENT] [INFO] Stats: total=1952 sessions=13 errors=19
+[2026-07-17 13:27:54] [ANALYSIS_AGENT] [INFO] [stats_node] Stats fetched (1612 chars).
+[2026-07-17 13:27:54] [ANALYSIS_AGENT] [DEBUG] [ROUTE] stats_node → chart_node
+[2026-07-17 13:27:54] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=stats_node routing=['stats_node → chart_node']
+[2026-07-17 13:27:54] [ANALYSIS_AGENT] [INFO] [chart_node] Generating chart.
+[2026-07-17 13:27:54] [ANALYSIS_AGENT] [INFO] latency_trend_chart: window=5 save_path=None
+[2026-07-17 13:28:09] [ANALYSIS_AGENT] [INFO] latency_trend_chart: Latency Summary (ms):
+  query_knowledge: mean=106905.0  median=68186.6  max=1139267.0  n=44
+  reflect_answer: mean=53209
+[2026-07-17 13:28:09] [ANALYSIS_AGENT] [INFO] [chart_node] Chart generated (832 chars).
+[2026-07-17 13:28:09] [ANALYSIS_AGENT] [DEBUG] [ROUTE] chart_node → synthesize_node
+[2026-07-17 13:28:09] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=chart_node routing=['chart_node → synthesize_node']
+[2026-07-17 13:28:09] [ANALYSIS_AGENT] [INFO] [synthesize_node] Synthesising final answer.
+[2026-07-17 13:28:35] [ANALYSIS_AGENT] [INFO] [synthesize_node] Final answer (4540 chars).
+[2026-07-17 13:28:35] [ANALYSIS_AGENT] [DEBUG] [ROUTE] synthesize_node → END
+[2026-07-17 13:28:35] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=synthesize_node routing=['synthesize_node → END']
+[2026-07-17 13:28:35] [ANALYSIS_AGENT] [INFO] Analysis query complete. steps=4 final_answer_len=4540
+[2026-07-17 13:29:40] [ANALYSIS_AGENT] [INFO] Analysis query: Why does a multi-agent log analysis system experience latency spikes?
+[2026-07-17 13:29:40] [ANALYSIS_AGENT] [INFO] [initial_ingest_node] query='Why does a multi-agent log analysis system experience latency spikes?' planned_route=['stats_node', 'chart_node', 'synthesize_node']
+[2026-07-17 13:29:40] [ANALYSIS_AGENT] [DEBUG] [ROUTE] initial_ingest_node → stats_node
+[2026-07-17 13:29:40] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=initial_ingest_node routing=['initial_ingest_node → stats_node']
+[2026-07-17 13:29:40] [ANALYSIS_AGENT] [INFO] [stats_node] Fetching log statistics.
+[2026-07-17 13:29:40] [ANALYSIS_AGENT] [INFO] get_log_statistics called.
+[2026-07-17 13:29:50] [ANALYSIS_AGENT] [INFO] Stats: total=1952 sessions=13 errors=19
+[2026-07-17 13:29:50] [ANALYSIS_AGENT] [INFO] [stats_node] Stats fetched (1612 chars).
+[2026-07-17 13:29:50] [ANALYSIS_AGENT] [DEBUG] [ROUTE] stats_node → chart_node
+[2026-07-17 13:29:50] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=stats_node routing=['stats_node → chart_node']
+[2026-07-17 13:29:50] [ANALYSIS_AGENT] [INFO] [chart_node] Generating chart.
+[2026-07-17 13:29:50] [ANALYSIS_AGENT] [INFO] latency_trend_chart: window=5 save_path=None
+[2026-07-17 13:30:02] [ANALYSIS_AGENT] [INFO] latency_trend_chart: Latency Summary (ms):
+  query_knowledge: mean=106905.0  median=68186.6  max=1139267.0  n=44
+  reflect_answer: mean=53209
+[2026-07-17 13:30:02] [ANALYSIS_AGENT] [INFO] [chart_node] Chart generated (832 chars).
+[2026-07-17 13:30:02] [ANALYSIS_AGENT] [DEBUG] [ROUTE] chart_node → synthesize_node
+[2026-07-17 13:30:02] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=chart_node routing=['chart_node → synthesize_node']
+[2026-07-17 13:30:02] [ANALYSIS_AGENT] [INFO] [synthesize_node] Synthesising final answer.
+[2026-07-17 13:30:15] [ANALYSIS_AGENT] [INFO] [synthesize_node] Final answer (4674 chars).
+[2026-07-17 13:30:15] [ANALYSIS_AGENT] [DEBUG] [ROUTE] synthesize_node → END
+[2026-07-17 13:30:15] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=synthesize_node routing=['synthesize_node → END']
+[2026-07-17 13:30:15] [ANALYSIS_AGENT] [INFO] Analysis query complete. steps=4 final_answer_len=4674
+[2026-07-17 13:33:19] [ANALYSIS_AGENT] [INFO] Analysis query: Run an explainability audit on the most recent session
+[2026-07-17 13:33:19] [ANALYSIS_AGENT] [INFO] [initial_ingest_node] query='Run an explainability audit on the most recent session' planned_route=['stats_node', 'search_node', 'xai_node', 'synthesize_node']
+[2026-07-17 13:33:19] [ANALYSIS_AGENT] [DEBUG] [ROUTE] initial_ingest_node → stats_node
+[2026-07-17 13:33:20] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=initial_ingest_node routing=['initial_ingest_node → stats_node']
+[2026-07-17 13:33:20] [ANALYSIS_AGENT] [INFO] [stats_node] Fetching log statistics.
+[2026-07-17 13:33:20] [ANALYSIS_AGENT] [INFO] get_log_statistics called.
+[2026-07-17 13:33:45] [ANALYSIS_AGENT] [INFO] Stats: total=1952 sessions=13 errors=19
+[2026-07-17 13:33:45] [ANALYSIS_AGENT] [INFO] [stats_node] Stats fetched (1612 chars).
+[2026-07-17 13:33:45] [ANALYSIS_AGENT] [DEBUG] [ROUTE] stats_node → search_node
+[2026-07-17 13:33:45] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=stats_node routing=['stats_node → search_node']
+[2026-07-17 13:33:45] [ANALYSIS_AGENT] [INFO] [search_node] Running semantic log search.
+[2026-07-17 13:33:45] [ANALYSIS_AGENT] [INFO] semantic_log_search: query='Run an explainability audit on the most recent session' k=15
+[2026-07-17 13:33:54] [ANALYSIS_AGENT] [INFO] semantic_log_search returned 15 results.
+[2026-07-17 13:33:54] [ANALYSIS_AGENT] [INFO] [search_node] Search returned (292644 chars).
+[2026-07-17 13:33:54] [ANALYSIS_AGENT] [DEBUG] [ROUTE] search_node → xai_node
+[2026-07-17 13:33:54] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=search_node routing=['search_node → xai_node']
+[2026-07-17 13:33:54] [ANALYSIS_AGENT] [INFO] [xai_node] Running explainability audit.
+[2026-07-17 13:33:54] [ANALYSIS_AGENT] [INFO] run_explainability_audit: session_id=dd3ccb23-de48-4aed-84eb-f7d5c7ba05de trace_id=None top_k=20
+[2026-07-17 13:33:58] [ANALYSIS_AGENT] [INFO] Audit targeting 20 log entries.
+[2026-07-17 13:33:58] [ANALYSIS_AGENT] [INFO] fetch_neo4j_subgraph: session_id=dd3ccb23-de48-4aed-84eb-f7d5c7ba05de trace_id=None hop_depth=2
+[2026-07-17 13:34:16] [ANALYSIS_AGENT] [INFO] fetch_neo4j_subgraph: 0 nodes extracted.
+[2026-07-17 13:34:29] [ANALYSIS_AGENT] [INFO] Audit report saved: C:\Users\Victor\My Files\Kodecamp\stage3\hlp_graph_knowledge_agent\explainability_audit_report.json
+[2026-07-17 13:34:29] [ANALYSIS_AGENT] [INFO] Explainability audit complete: {"status": "success", "session_audited": "dd3ccb23-de48-4aed-84eb-f7d5c7ba05de", "entries_analysed": 20, "lime_tokens_scored": 0, "shap_features_scored": 3, "graph_context_nodes": {"sessions": 0, "agent_actions": 0, "mcp_calls": 0}, "report_path": "C:\\Users\\Victor\\My Files\\Kodecamp\\stage3\\hlp_graph_knowledge_agent\\explainability_audit_report.json"}
+[2026-07-17 13:34:29] [ANALYSIS_AGENT] [INFO] [xai_node] XAI audit returned (389 chars).
+[2026-07-17 13:34:29] [ANALYSIS_AGENT] [DEBUG] [ROUTE] xai_node → synthesize_node
+[2026-07-17 13:34:29] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=xai_node routing=['xai_node → synthesize_node']
+[2026-07-17 13:34:29] [ANALYSIS_AGENT] [INFO] [synthesize_node] Synthesising final answer.
+[2026-07-17 13:34:44] [ANALYSIS_AGENT] [INFO] [synthesize_node] Final answer (4608 chars).
+[2026-07-17 13:34:44] [ANALYSIS_AGENT] [DEBUG] [ROUTE] synthesize_node → END
+[2026-07-17 13:34:44] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=synthesize_node routing=['synthesize_node → END']
+[2026-07-17 13:34:44] [ANALYSIS_AGENT] [INFO] Analysis query complete. steps=5 final_answer_len=4608
+[2026-07-17 13:36:59] [ANALYSIS_AGENT] [INFO] Analysis query: Run an explainability audit on the most recent session
+[2026-07-17 13:36:59] [ANALYSIS_AGENT] [INFO] [initial_ingest_node] query='Run an explainability audit on the most recent session' planned_route=['stats_node', 'search_node', 'xai_node', 'synthesize_node']
+[2026-07-17 13:36:59] [ANALYSIS_AGENT] [DEBUG] [ROUTE] initial_ingest_node → stats_node
+[2026-07-17 13:36:59] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=initial_ingest_node routing=['initial_ingest_node → stats_node']
+[2026-07-17 13:36:59] [ANALYSIS_AGENT] [INFO] [stats_node] Fetching log statistics.
+[2026-07-17 13:36:59] [ANALYSIS_AGENT] [INFO] get_log_statistics called.
+[2026-07-17 13:37:08] [ANALYSIS_AGENT] [INFO] Stats: total=1952 sessions=13 errors=19
+[2026-07-17 13:37:08] [ANALYSIS_AGENT] [INFO] [stats_node] Stats fetched (1612 chars).
+[2026-07-17 13:37:08] [ANALYSIS_AGENT] [DEBUG] [ROUTE] stats_node → search_node
+[2026-07-17 13:37:08] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=stats_node routing=['stats_node → search_node']
+[2026-07-17 13:37:08] [ANALYSIS_AGENT] [INFO] [search_node] Running semantic log search.
+[2026-07-17 13:37:08] [ANALYSIS_AGENT] [INFO] semantic_log_search: query='Run an explainability audit on the most recent session' k=15
+[2026-07-17 13:37:12] [ANALYSIS_AGENT] [INFO] semantic_log_search returned 15 results.
+[2026-07-17 13:37:12] [ANALYSIS_AGENT] [INFO] [search_node] Search returned (292644 chars).
+[2026-07-17 13:37:12] [ANALYSIS_AGENT] [DEBUG] [ROUTE] search_node → xai_node
+[2026-07-17 13:37:12] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=search_node routing=['search_node → xai_node']
+[2026-07-17 13:37:12] [ANALYSIS_AGENT] [INFO] [xai_node] Running explainability audit.
+[2026-07-17 13:37:12] [ANALYSIS_AGENT] [INFO] run_explainability_audit: session_id=dd3ccb23-de48-4aed-84eb-f7d5c7ba05de trace_id=None top_k=20
+[2026-07-17 13:37:17] [ANALYSIS_AGENT] [INFO] Audit targeting 20 log entries.
+[2026-07-17 13:37:17] [ANALYSIS_AGENT] [INFO] fetch_neo4j_subgraph: session_id=dd3ccb23-de48-4aed-84eb-f7d5c7ba05de trace_id=None hop_depth=2
+[2026-07-17 13:37:18] [ANALYSIS_AGENT] [INFO] Tier 2 cache HIT: subgraph:dd3ccb23-de48-4aed-84eb-f7d5c7ba05de::2
+[2026-07-17 13:37:19] [ANALYSIS_AGENT] [INFO] Tier 2 cache HIT: xai:48969d39bd2612c5
+[2026-07-17 13:37:19] [ANALYSIS_AGENT] [INFO] Audit report saved: C:\Users\Victor\My Files\Kodecamp\stage3\hlp_graph_knowledge_agent\explainability_audit_report.json
+[2026-07-17 13:37:19] [ANALYSIS_AGENT] [INFO] Explainability audit complete: {"status": "success", "session_audited": "dd3ccb23-de48-4aed-84eb-f7d5c7ba05de", "entries_analysed": 20, "lime_tokens_scored": 0, "shap_features_scored": 3, "graph_context_nodes": {"sessions": 0, "agent_actions": 0, "mcp_calls": 0}, "report_path": "C:\\Users\\Victor\\My Files\\Kodecamp\\stage3\\hlp_graph_knowledge_agent\\explainability_audit_report.json"}
+[2026-07-17 13:37:19] [ANALYSIS_AGENT] [INFO] [xai_node] XAI audit returned (389 chars).
+[2026-07-17 13:37:19] [ANALYSIS_AGENT] [DEBUG] [ROUTE] xai_node → synthesize_node
+[2026-07-17 13:37:19] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=xai_node routing=['xai_node → synthesize_node']
+[2026-07-17 13:37:19] [ANALYSIS_AGENT] [INFO] [synthesize_node] Synthesising final answer.
+[2026-07-17 13:37:33] [ANALYSIS_AGENT] [INFO] [synthesize_node] Final answer (4608 chars).
+[2026-07-17 13:37:33] [ANALYSIS_AGENT] [DEBUG] [ROUTE] synthesize_node → END
+[2026-07-17 13:37:33] [ANALYSIS_AGENT] [DEBUG] [STREAM] node=synthesize_node routing=['synthesize_node → END']
+[2026-07-17 13:37:33] [ANALYSIS_AGENT] [INFO] Analysis query complete. steps=5 final_answer_len=4608
