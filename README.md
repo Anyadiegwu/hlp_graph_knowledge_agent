@@ -32,6 +32,7 @@ hlp_graph_knowledge_agent/
 │       ├── graph_client.py    # Neo4j graph client + log-to-graph projection
 │       ├── analytics.py       # Matplotlib/Seaborn chart generation
 │       └── xai_engine.py      # Proxy LIME / proxy SHAP explainability engine
+├── charts/                    # Auto-generated PNG charts (latency trend, tokens, errors, dashboard)
 ├── pyproject.toml
 ├── .env.example
 ├── mcp_agent_system.log
@@ -193,6 +194,8 @@ Step-by-step trace of the edgeless LangGraph node executions with dynamic `Comma
 ### 📊 Trend Charts
 Latency trend, token metrics, error frequency, and full 4-panel dashboard charts with quick-generate buttons. Chart-backing queries are cached in Tier 3 (Streamlit UI cache) to avoid recomputation on every re-render.
 
+Every generated chart is saved as a timestamped PNG to `charts/` at the repo root (e.g. `charts/latency_trend_20260717_115737.png`), so each run is preserved rather than overwritten.
+
 ### 🗺️ Graph Updates
 Neo4j Aura DB graph commit log showing nodes and edges written per session. Subgraph fetches are cached in Tier 2.
 
@@ -313,6 +316,7 @@ Both computations are wrapped in the Tier 2 Redis cache, so repeated audits of t
 | `mcp_agent_system.log` | Dual-stream flat log (CLIENT + SERVER relay) |
 | `cache_performance_audit.json` | Trace of a Tier 1 cache miss followed by a semantic cache hit, with latency delta |
 | `explainability_audit_report.json` | LIME token importance arrays and SHAP feature contributions for the last audit run |
+| `charts/*.png` | Timestamped latency/token/error/dashboard charts generated from the Trend Charts tab |
 | `REFLECTION_STAGE5.md` | Reflection on semantic-cache threshold tuning, cloud state synchronization, and local vs. centralized caching trade-offs |
 
 ---
