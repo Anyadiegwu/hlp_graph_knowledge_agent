@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import random
+from dotenv import find_dotenv, load_dotenv
 from typing import Any
 
 from fastmcp import Context, FastMCP
@@ -12,6 +13,14 @@ from langchain_tavily import TavilySearch
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse
 from pydantic import BaseModel, Field
+
+from mcp_server.crag_index import CragMultiIndex
+from mcp_server.paywall import require_payment
+from x402_core.exceptions import FinOpsBudgetExceededException
+from x402_core.finops import get_governor
+
+
+load_dotenv(find_dotenv(".env"))
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -35,6 +44,62 @@ async def health_check(_: Request) -> PlainTextResponse:
 
 _tavily_key = os.getenv("TAVILY_API_KEY", "")
 _tavily = TavilySearch(max_results=3, include_images=False) if _tavily_key else None
+
+class _EmbeddingProvider:
+    """Lazy-loaded embedding provider with Gemini → zero-vector stub fallback."""
+    def __init__(self) -> None:
+        self._model = None
+        self._tried_init = False
+
+    def _ensure_model(self) -> None:
+        if self._tried_init:
+            return
+        self._tried_init = True
+        api_key = os.getenv("GEMINI_API_KEY", "")
+        if not api_key:
+            logger.warning(
+                "GEMINI_API_KEY not set — CRAG will use zero-vector stub embeddings "
+                "(cosine scores will be meaningless until a key is configured)."
+            )
+            return
+        from langchain_google_genai import GoogleGenerativeAIEmbeddings
+        self._model = GoogleGenerativeAIEmbeddings(
+            model="models/gemini-embedding-001",
+            google_api_key=api_key,
+            output_dimensionality=768,
+        )
+        logger.info("CRAG embedding model loaded: models/gemini-embedding-001")
+
+    def embed(self, text: str) -> list[float]:
+        self._ensure_model()
+        if self._model is None:
+            return [0.0] * 768
+        return self._model.embed_query(text)
+
+    def embed_batch(self, texts: list[str], batch_size: int = 100) -> tuple[list[list[float]], list[bool]]:
+        """Returns (vectors, ok_flags) — ok_flags[i] is False if that item's
+        sub-batch fell back to a zero-vector stub."""
+        self._ensure_model()
+        if self._model is None:
+            return [[0.0] * 768 for _ in texts], [False] * len(texts)
+
+        vectors: list[list[float]] = []
+        ok_flags: list[bool] = []
+        for i in range(0, len(texts), batch_size):
+            sub_batch = texts[i:i + batch_size]
+            try:
+                vectors.extend(self._model.embed_documents(sub_batch))
+                ok_flags.extend([True] * len(sub_batch))
+            except Exception as exc:
+                logger.error(
+                    "Batch embedding failed for items %d-%d: %s — using zero-vector stubs.",
+                    i, i + len(sub_batch), exc,
+                )
+                vectors.extend([[0.0] * 768 for _ in sub_batch])
+                ok_flags.extend([False] * len(sub_batch))
+        return vectors, ok_flags
+
+_embedder = _EmbeddingProvider()
 
 KNOWLEDGE_BASE: dict[str, dict[str, Any]] = {
     "langchain": {
@@ -263,6 +328,60 @@ KNOWLEDGE_BASE: dict[str, dict[str, Any]] = {
     },
 }
 
+CRAG_MULTI_INDEX = CragMultiIndex()
+
+_CHUNK_LOOKUP: dict[str, dict[str, Any]] = {}
+for _domain_name, _domain in KNOWLEDGE_BASE.items():
+    for _section_name, _section in _domain.get("sections", {}).items():
+        for _chunk in _section.get("chunks", []):
+            _CHUNK_LOOKUP[_chunk["id"]] = {**_chunk, "_domain": _domain_name, "_section": _section_name}
+
+
+async def _ingest_knowledge_base(kb: dict[str, dict[str, Any]]) -> None:
+    """One-time (idempotent) ingestion: embeds every domain/section/chunk
+    and upserts into BOTH the Redis hot tier and the Supabase durable
+    tier, each configured for standard cosine distance at the index
+    level (see crag_index.py) rather than any hand-rolled metric."""
+    keys: list[tuple[str, str, str, str]] = []  # (bucket, item_id, domain, section)
+    texts: list[str] = []
+
+    for domain_name, domain in kb.items():
+        keys.append(("domains", domain_name, domain_name, ""))
+        texts.append(domain["summary"] + " " + " ".join(domain.get("keywords", [])))
+        for section_name, section in domain.get("sections", {}).items():
+            sec_key = f"{domain_name}::{section_name}"
+            keys.append(("sections", sec_key, domain_name, section_name))
+            texts.append(section["summary"] + " " + " ".join(section.get("keywords", [])))
+            for chunk in section.get("chunks", []):
+                keys.append(("chunks", chunk["id"], domain_name, section_name))
+                texts.append(
+                    chunk["title"] + " " + chunk["content"] + " " + " ".join(chunk.get("keywords", []))
+                )
+
+    vectors, ok_flags = _embedder.embed_batch(texts)
+    failed = 0
+    for (bucket, item_id, domain_name, section_name), vector, ok in zip(keys, vectors, ok_flags):
+        if not ok:
+            failed += 1
+            continue
+        await CRAG_MULTI_INDEX.upsert_everywhere(bucket, item_id, vector, domain_name, section_name)
+
+    logger.info(
+        "CRAG multi-index ingestion complete: %d items embedded, %d failed "
+        "(redis_tier_available=%s, supabase_tier_configured=%s).",
+        len(keys) - failed, failed,
+        CRAG_MULTI_INDEX.redis_tier.available, CRAG_MULTI_INDEX.supabase_tier.configured,
+    )
+
+
+try:
+    asyncio.run(_ingest_knowledge_base(KNOWLEDGE_BASE))
+except RuntimeError:
+    # Defensive: if an event loop is already running at import time (e.g.
+    # certain test runners), schedule ingestion on it instead of crashing.
+    logger.warning("Event loop already running at import — scheduling CRAG ingestion as a task.")
+    asyncio.get_event_loop().create_task(_ingest_knowledge_base(KNOWLEDGE_BASE))
+
 class CriticResponse(BaseModel):
     has_issues: bool = Field(
         description="True if the draft answer fails any constraints or fails to fully answer the query."
@@ -361,50 +480,71 @@ def _expand_queries(query: str) -> list[str]:
     variants.append(f"How does {q.lower().rstrip('?')} work in practice?")
     return variants[:3]
 
-def _score_against_queries(text: str, keywords: list[str], queries: list[str]) -> float:
-    combined_words = set((text + " " + " ".join(keywords)).lower().split())
-    query_terms = set()
-    for q in queries:
-        query_terms.update(w for w in q.lower().split() if len(w) > 2)
-    hits = len(query_terms & combined_words)
-    return hits / max(len(query_terms), 1)
+DOMAIN_THRESHOLD  = 0.35
+SECTION_THRESHOLD = 0.35
+LEAF_THRESHOLD    = 0.40
+TOP_K_PER_LEVEL   = 5
 
-def _hierarchical_retrieve(queries: list[str]) -> list[dict[str, Any]]:
-    DOMAIN_THRESHOLD  = 0.05
-    SECTION_THRESHOLD = 0.05
-    leaf_candidates: list[dict[str, Any]] = []
 
-    for domain_name, domain in KNOWLEDGE_BASE.items():
-        domain_score = _score_against_queries(
-            domain["summary"], domain.get("keywords", []), queries
-        )
-        if domain_score < DOMAIN_THRESHOLD:
-            continue
-        for section_name, section in domain.get("sections", {}).items():
-            section_score = _score_against_queries(
-                section["summary"], section.get("keywords", []), queries
-            )
-            if section_score < SECTION_THRESHOLD:
+async def _hierarchical_retrieve(queries: list[str]) -> list[dict[str, Any]]:
+    """True cosine multi-index retrieval: each hierarchy level is a real
+    ANN cosine query against `CRAG_MULTI_INDEX` (Redis hot tier, Supabase
+    durable tier) — no per-item Python cosine loop, no keyword weighting."""
+    try:
+        query_vectors = [_embedder.embed(q) for q in queries]
+    except Exception as exc:
+        logger.error("Query embedding failed: %s — returning no candidates (will trigger Tavily fallback).", exc)
+        return []
+
+    # Merge scores across the expanded query variants by taking the max
+    # similarity seen for a given item_id — a chunk is relevant if it
+    # matches ANY good phrasing of the question, not the average of all of them.
+    domain_scores: dict[str, float] = {}
+    for qv in query_vectors:
+        for item in await CRAG_MULTI_INDEX.cosine_query("domains", qv, top_k=TOP_K_PER_LEVEL):
+            domain_scores[item.item_id] = max(domain_scores.get(item.item_id, 0.0), item.similarity)
+
+    relevant_domains = {d for d, s in domain_scores.items() if s >= DOMAIN_THRESHOLD}
+
+    section_scores: dict[str, float] = {}
+    for qv in query_vectors:
+        for item in await CRAG_MULTI_INDEX.cosine_query("sections", qv, top_k=TOP_K_PER_LEVEL * 2):
+            if item.domain and item.domain not in relevant_domains:
                 continue
-            for chunk in section.get("chunks", []):
-                chunk_score = _score_against_queries(
-                    chunk["content"] + " " + chunk["title"],
-                    chunk.get("keywords", []),
-                    queries,
-                )
-                leaf_candidates.append({
-                    **chunk,
-                    "_domain":  domain_name,
-                    "_section": section_name,
-                    "_score":   domain_score * 0.3 + section_score * 0.3 + chunk_score * 0.4,
-                })
+            section_scores[item.item_id] = max(section_scores.get(item.item_id, 0.0), item.similarity)
+
+    relevant_sections = {s for s, sc in section_scores.items() if sc >= SECTION_THRESHOLD}
+
+    chunk_scores: dict[str, float] = {}
+    for qv in query_vectors:
+        for item in await CRAG_MULTI_INDEX.cosine_query("chunks", qv, top_k=TOP_K_PER_LEVEL * 3):
+            sec_key = f"{item.domain}::{item.section}"
+            if relevant_sections and sec_key not in relevant_sections:
+                continue
+            chunk_scores[item.item_id] = max(chunk_scores.get(item.item_id, 0.0), item.similarity)
+
+    leaf_candidates: list[dict[str, Any]] = []
+    for chunk_id, chunk_score in chunk_scores.items():
+        chunk = _CHUNK_LOOKUP.get(chunk_id)
+        if chunk is None:
+            continue
+        domain_name, section_name = chunk["_domain"], chunk["_section"]
+        d_score = domain_scores.get(domain_name, 0.0)
+        s_score = section_scores.get(f"{domain_name}::{section_name}", 0.0)
+        leaf_candidates.append({
+            **chunk,
+            "_score": d_score * 0.3 + s_score * 0.3 + chunk_score * 0.4,
+        })
 
     leaf_candidates.sort(key=lambda c: c["_score"], reverse=True)
-    logger.info("Hierarchical retrieval yielded %d leaf candidates.", len(leaf_candidates))
+    logger.info(
+        "True cosine multi-index retrieval yielded %d leaf candidates (top score: %.3f).",
+        len(leaf_candidates),
+        leaf_candidates[0]["_score"] if leaf_candidates else 0.0,
+    )
     return leaf_candidates
 
-TOT_BRANCHES = 3  # candidate thoughts generated per chunk
-
+TOT_BRANCHES = 3  
 
 class ToTThought(BaseModel):
     reasoning: str = Field(description="A short line of reasoning about this chunk's relevance.")
@@ -419,22 +559,35 @@ async def _tot_evaluate(
     chunks: list[dict[str, Any]],
     queries: list[str],
     ctx: Context = None,
+    session_id: str = "anonymous",
 ) -> list[dict[str, Any]]:
     """
     Tree-of-Thought chunk evaluation: generate several independent lines of
     reasoning (thoughts) per chunk, then use a separate evaluator call to
     pick the strongest one and decide relevance from it.
+
+    Each branch is a real LLM call (via MCP sampling), so each one is
+    gated by a FinOps preflight check first — a runaway ToT expansion
+    (many chunks x many branches) is exactly the kind of multi-step trace
+    the governor exists to cap before it burns through the session's budget.
     """
     if not chunks or ctx is None:
-        return [c for c in chunks if c["_score"] >= 0.15]
+        return [c for c in chunks if c["_score"] >= LEAF_THRESHOLD]
 
+    governor = get_governor()
     query_block = "\n".join(f"- {q}" for q in queries)
     accepted: list[dict[str, Any]] = []
 
     for chunk in chunks:
         thoughts = []
         for _ in range(TOT_BRANCHES):
-            prompt = f"""
+            try:
+                governor.preflight(session_id, projected_usd=0.0004, step_label="tot_thought_branch")
+            except FinOpsBudgetExceededException as exc:
+                logger.warning("FinOps ceiling reached mid-ToT (%s) — truncating remaining branches/chunks.", exc)
+                if ctx: await ctx.log(level="warning", message=f"FinOps budget exceeded during ToT: {exc}")
+                return accepted or [c for c in chunks if c["_score"] >= LEAF_THRESHOLD][:1]
+            prompt = f"""[TASK:TOT_THOUGHT]
             Queries:
             {query_block}
 
@@ -449,16 +602,17 @@ async def _tot_evaluate(
                 result = await ctx.sample(prompt, max_tokens=100)
                 text = result.text.strip().strip("```json").strip("```").strip()
                 thoughts.append(ToTThought.model_validate_json(text).reasoning)
+                governor.record_spend(session_id, 0.0004)
             except Exception as exc:
                 logger.warning("ToT thought generation failed: %s", exc)
 
         if not thoughts:
-            if chunk["_score"] >= 0.15:
+            if chunk["_score"] >= LEAF_THRESHOLD:
                 accepted.append(chunk)
             continue
 
         thoughts_block = "\n".join(f"{i}: {t}" for i, t in enumerate(thoughts))
-        eval_prompt = f"""
+        eval_prompt = f"""[TASK:TOT_VERDICT]
         Here are independent reasoning attempts about whether a chunk is
         relevant to these queries:
         {query_block}
@@ -471,9 +625,17 @@ async def _tot_evaluate(
         {json.dumps(ToTVerdict.model_json_schema(), indent=2)}
         """
         try:
+            governor.preflight(session_id, projected_usd=0.0004, step_label="tot_verdict_eval")
+        except FinOpsBudgetExceededException as exc:
+            logger.warning("FinOps ceiling reached before ToT verdict (%s) — using cosine score as fallback verdict.", exc)
+            if chunk["_score"] >= LEAF_THRESHOLD:
+                accepted.append(chunk)
+            continue
+        try:
             result = await ctx.sample(eval_prompt, max_tokens=100)
             text = result.text.strip().strip("```json").strip("```").strip()
             verdict = ToTVerdict.model_validate_json(text)
+            governor.record_spend(session_id, 0.0004)
             await ctx.log(
                 level="debug",
                 message=f"ToT chunk '{chunk['id']}': best_thought=\"{thoughts[verdict.best_thought_index]}\" → relevant={verdict.is_relevant}",
@@ -482,7 +644,7 @@ async def _tot_evaluate(
                 accepted.append(chunk)
         except Exception as exc:
             logger.warning("ToT evaluation failed for chunk '%s': %s", chunk["id"], exc)
-            if chunk["_score"] >= 0.15:
+            if chunk["_score"] >= LEAF_THRESHOLD:
                 accepted.append(chunk)
 
     logger.info("ToT accepted %d/%d chunks.", len(accepted), len(chunks))
@@ -497,13 +659,13 @@ async def _tavily_fallback(query: str) -> list[dict[str, Any]]:
         if isinstance(results, list):
             return [
                 {
-                    document_id: f"web-{i}",
-                    "title":  r.get("title", "Web Result"),
+                    "document_id": f"web-{i}",
+                    "title": r.get("title", "Web Result"),
                     "content": r.get("content", r.get("snippet", "")),
-                    "url":     r.get("url", ""),
-                    "_domain":  "web",
+                    "url": r.get("url", ""),
+                    "_domain": "web",
                     "_section": "web",
-                    "_score":   r.get("score", 0.5),
+                    "_score": r.get("score", 0.5),
                     "keywords": [],
                 }
                 for i, r in enumerate(results)
@@ -522,35 +684,50 @@ async def domain_knowledge_resource() -> str:
             lines.append(f"    └─ {sec_name}: {sec['summary']}")
     return "\n".join(lines)
 
+QUERY_KNOWLEDGE_PRICE_USD = float(os.getenv("QUERY_KNOWLEDGE_PRICE_USD", "0.01"))
+
+
 @mcp.tool()
-async def query_knowledge(query: str, ctx: Context = None) -> str:
+@require_payment("query_knowledge", QUERY_KNOWLEDGE_PRICE_USD)
+async def query_knowledge(query: str, session_id: str = "", ctx: Context = None) -> str:
     msg = f"CRAG pipeline started for query: '{query}'"
     logger.info(msg)
     if ctx: await ctx.info(msg)
+
+    governor = get_governor()
+    fin_session = session_id or "anonymous"
+    try:
+        governor.preflight(fin_session, projected_usd=0.0015, step_label="query_knowledge.retrieval")
+    except FinOpsBudgetExceededException as exc:
+        msg = f"FinOps ceiling hit before retrieval even started: {exc}"
+        logger.warning(msg)
+        if ctx: await ctx.log(level="warning", message=msg)
+        return f"[FinOps budget exceeded] Falling back to a safe static summary for: {query}"
 
     queries = _expand_queries(query)
     msg = f"Expanded queries: {queries}"
     logger.debug(msg)
     if ctx: await ctx.log(level="debug", message=msg)
 
-    candidates = _hierarchical_retrieve(queries)
-    msg = f"Hierarchical retrieval yielded {len(candidates)} leaf candidates."
+    candidates = await _hierarchical_retrieve(queries)
+    governor.record_spend(fin_session, 0.0015)
+    top_score = candidates[0]["_score"] if candidates else 0.0
+    msg = f"Cosine hierarchical retrieval yielded {len(candidates)} leaf candidates (top score: {top_score:.3f})."
     logger.info(msg)
     if ctx: await ctx.info(msg)
 
-    accepted = await _tot_evaluate(candidates, queries, ctx)
+    accepted = await _tot_evaluate(candidates, queries, ctx, session_id=fin_session)
 
     msg = f"ToT accepted {len(accepted)}/{len(candidates)} chunks."
     logger.info(msg)
     if ctx: await ctx.info(msg)
 
-    RELEVANCE_THRESHOLD = 0.15
     top_score = accepted[0]["_score"] if accepted else 0.0
-    kb_is_relevant = top_score >= RELEVANCE_THRESHOLD and len(accepted) >= 1
+    kb_is_relevant = top_score >= LEAF_THRESHOLD and len(accepted) >= 1
 
     used_fallback = False
     if not kb_is_relevant:
-        msg = f"KB relevance too low (top_score={top_score:.3f}, threshold={RELEVANCE_THRESHOLD}) — triggering Tavily fallback."
+        msg = f"KB relevance too low (top_score={top_score:.3f}, threshold={LEAF_THRESHOLD}) — triggering Tavily fallback."
         logger.info(msg)
         if ctx: await ctx.info(msg)
         web = await _tavily_fallback(query)
@@ -597,6 +774,7 @@ async def reflect_answer(
     draft_answer: str,
     original_query: str,
     constraints: str = "accuracy, completeness, no hallucinations",
+    session_id: str = "",
     ctx: Context = None,
 ) -> str:
     if ctx is None:
@@ -606,11 +784,24 @@ async def reflect_answer(
     logger.info(msg)
     await ctx.info(msg)
 
+    governor = get_governor()
+    fin_session = session_id or "anonymous"
     current_draft = draft_answer
     critic_schema = json.dumps(CriticResponse.model_json_schema(), indent=2)
     corrector_schema = json.dumps(CorrectorResponse.model_json_schema(), indent=2)
 
     for iteration in range(1, MAX_REFLECTION_ITERATIONS + 1):
+        # Pre-flight: a Critic + Corrector pair is two LLM calls, so budget
+        # for both before running either — this is the "intercept planning
+        # cycles" requirement for the Reflection/Self-correction loop.
+        try:
+            governor.preflight(fin_session, projected_usd=0.002, step_label=f"reflection_iter_{iteration}")
+        except FinOpsBudgetExceededException as exc:
+            msg = f"FinOps ceiling reached at reflection iteration {iteration}: {exc} — returning current draft."
+            logger.warning(msg)
+            await ctx.log(level="warning", message=msg)
+            break
+
         msg = f"Reflection iteration {iteration}/{MAX_REFLECTION_ITERATIONS}"
         logger.info(msg)
         await ctx.info(msg)
@@ -620,7 +811,7 @@ async def reflect_answer(
             message=f"Iteration {iteration}",
         )
 
-        critic_prompt = f"""
+        critic_prompt = f"""[TASK:CRITIC]
         You are a rigorous Critic AI. Audit the draft answer against the original query and constraints.
 
         Constraints:
@@ -641,8 +832,14 @@ async def reflect_answer(
             critic_text = critic_result.text if hasattr(critic_result, "text") else str(critic_result)
             clean_critic = critic_text.strip().strip("```json").strip("```").strip()
             critic_data = CriticResponse.model_validate_json(clean_critic)
+            governor.record_spend(fin_session, 0.001)
         except Exception as exc:
-            logger.error("Critic step failed parsing or validation: %s", exc)
+            logger.error(
+                "Critic step failed parsing or validation: %s — this often indicates "
+                "a semantic-cache cross-contamination (wrong cached response served "
+                "for this prompt) rather than a genuine LLM formatting error. "
+                "Raw response was: %s", exc, clean_critic[:200] if 'clean_critic' in dir() else "N/A",
+            )
             await ctx.log(level="error", message=f"Critic step parsing failed: {exc}")
             break
 
@@ -654,7 +851,7 @@ async def reflect_answer(
             break
 
         issues_text = "\n".join(f"- {issue}" for issue in critic_data.issues)
-        corrector_prompt = f"""
+        corrector_prompt = f"""[TASK:CORRECTOR]
         You are a precise Corrector AI. Fix every issue listed below in the draft.
 
         Original Query: {original_query}
@@ -675,6 +872,7 @@ async def reflect_answer(
             clean_corrector = corrector_text.strip().strip("```json").strip("```").strip()
             corrector_data = CorrectorResponse.model_validate_json(clean_corrector)
             current_draft = corrector_data.corrected_answer
+            governor.record_spend(fin_session, 0.001)
             await ctx.info(f"Corrector applied {len(corrector_data.changes_made)} changes.")
         except Exception as exc:
             logger.error("Corrector step failed parsing or validation: %s", exc)

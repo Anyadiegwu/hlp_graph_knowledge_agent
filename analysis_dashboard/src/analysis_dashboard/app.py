@@ -11,6 +11,14 @@ import streamlit as st
 from dotenv import find_dotenv, load_dotenv
 import redis as redis_client_lib
 
+from analysis_dashboard.finops_view import (
+    fetch_usdc_balance,
+    get_velocity_snapshot,
+    summarize_ledger,
+)
+from x402_core.audit import read_audit_trail
+from x402_core.wallet import get_default_wallet
+
 load_dotenv(find_dotenv(".env"))
 
 st.set_page_config(
@@ -581,13 +589,14 @@ with st.sidebar:
         st.session_state.resilience_state = None
 
 
-tab_chat, tab_reasoning, tab_charts, tab_graph, tab_xai, tab_resilience = st.tabs([
+tab_chat, tab_reasoning, tab_charts, tab_graph, tab_xai, tab_resilience, tab_finops = st.tabs([
     "💬 Analysis Chat",
     "🧠 Agent Reasoning",
     "📊 Trend Charts",
     "🗺️ Graph Updates",
     "🔬 XAI Audit",
     "⚡ Resilience",
+    "💸 FinOps",
 ])
 
 
@@ -1118,6 +1127,141 @@ with tab_resilience:
 | `exception_key` | `"error_trace"` | Key used to inject caught exception into fallback input |
 | Fallback 1 | `_SelfHealRunnable` | LLM self-correction using corrective prompt |
 | Fallback 2 | `_AbsoluteFallbackRunnable` | Hardcoded safe exit — never raises |
+        """)
+
+
+with tab_finops:
+    st.markdown("### 💸 x402 Stablecoin Billing & Algorithmic FinOps Governance")
+    st.caption(
+        "Live wallet telemetry, spend/earn totals, spend velocity, and the "
+        "chronological 402 challenge → verify → settle audit stream — shared "
+        "across the MCP server's paywall and the agent client's reciprocal "
+        "sampling wall via one Redis-backed audit trail."
+    )
+
+    if st.button("🔄 Refresh FinOps Telemetry", width="stretch"):
+        st.session_state.pop("_finops_snapshot", None)
+
+    if "_finops_snapshot" not in st.session_state:
+        wallet = get_default_wallet()
+        wallet_address = wallet.address if wallet else os.getenv("SERVER_WALLET_ADDRESS", "")
+        balance = _run_async(fetch_usdc_balance(wallet_address)) if wallet_address else None
+        audit_entries = read_audit_trail(limit=200)
+        ledger_summary = summarize_ledger(audit_entries)
+        session_id = st.session_state.get("session_id", "")
+        velocity = get_velocity_snapshot(session_id) if session_id else 0.0
+        st.session_state._finops_snapshot = {
+            "wallet_address": wallet_address,
+            "balance": balance,
+            "audit_entries": audit_entries,
+            "ledger_summary": ledger_summary,
+            "velocity": velocity,
+            "fetched_at": time.time(),
+        }
+
+    snap = st.session_state._finops_snapshot
+
+    col_a, col_b, col_c, col_d = st.columns(4)
+    with col_a:
+        balance_display = f"${snap['balance']:.4f}" if snap["balance"] is not None else "—"
+        st.markdown(
+            f'<div class="stat-card"><div class="value">{balance_display}</div>'
+            f'<div class="label">Wallet USDC Balance</div></div>',
+            unsafe_allow_html=True,
+        )
+    with col_b:
+        st.markdown(
+            f'<div class="stat-card"><div class="value">${snap["ledger_summary"]["spent_usd"]:.4f}</div>'
+            f'<div class="label">Cumulative USDC Spent</div></div>',
+            unsafe_allow_html=True,
+        )
+    with col_c:
+        st.markdown(
+            f'<div class="stat-card"><div class="value">${snap["ledger_summary"]["earned_usd"]:.4f}</div>'
+            f'<div class="label">Cumulative USDC Earned</div></div>',
+            unsafe_allow_html=True,
+        )
+    with col_d:
+        st.markdown(
+            f'<div class="stat-card"><div class="value">${snap["velocity"]:.4f}/hr</div>'
+            f'<div class="label">Current Session Velocity</div></div>',
+            unsafe_allow_html=True,
+        )
+
+    if snap["wallet_address"]:
+        st.caption(f"Wallet: `{snap['wallet_address']}` · Network: Base Sepolia (`eip155:84532`)")
+    else:
+        st.info("No wallet configured — set AGENT_WALLET_PRIVATE_KEY or SERVER_WALLET_ADDRESS in .env.")
+
+    st.markdown("#### Spending Velocity Monitoring")
+    audit_entries = snap["audit_entries"]
+    if audit_entries:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        settlement_events = [
+            e for e in audit_entries
+            if e.get("event") in ("settlement_recorded", "reciprocal_settlement_recorded") and e.get("success")
+        ]
+        if settlement_events:
+            fig, ax = plt.subplots(figsize=(10, 3))
+            fig.patch.set_facecolor("#0f172a")
+            ax.set_facecolor("#0f172a")
+            xs = list(range(len(settlement_events)))
+            amounts = [
+                (e.get("amount_atomic") and int(e["amount_atomic"]) / (10 ** 6)) or 0.0
+                for e in settlement_events
+            ]
+            colors = ["#f87171" if e.get("direction") != "earned" else "#4ade80" for e in settlement_events]
+            ax.bar(xs, amounts, color=colors)
+            ax.set_xlabel("Settlement # (chronological)", color="#94a3b8", fontsize=9)
+            ax.set_ylabel("USDC", color="#94a3b8", fontsize=9)
+            ax.set_title("Settled Amounts (red = spent, green = earned)", color="#e2e8f0", fontsize=10)
+            ax.tick_params(colors="#94a3b8")
+            for spine in ax.spines.values():
+                spine.set_edgecolor("#1e3a5f")
+            plt.tight_layout()
+            st.pyplot(fig, width="stretch")
+            plt.close(fig)
+        else:
+            st.info("No confirmed settlements yet — issue a paid tool call to populate this chart.")
+    else:
+        st.info("No FinOps audit trail yet — REDIS_URL must be configured and shared with the MCP server.")
+
+    st.markdown("#### Chronological 402 Challenge / Settlement Audit Stream")
+    if audit_entries:
+        for entry in reversed(audit_entries[-30:]):
+            ts = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(entry.get("recorded_at", time.time())))
+            event = entry.get("event", "unknown")
+            resource = entry.get("resource", "")
+            detail_bits = []
+            if "payer" in entry:
+                detail_bits.append(f"payer={entry['payer'][:10]}…")
+            if "success" in entry:
+                detail_bits.append(f"success={entry['success']}")
+            if "transaction_hash" in entry and entry["transaction_hash"]:
+                detail_bits.append(f"tx={entry['transaction_hash'][:10]}…")
+            if "is_valid" in entry:
+                detail_bits.append(f"valid={entry['is_valid']}")
+            detail = " · ".join(detail_bits)
+            st.markdown(
+                f'<div class="step-box">🕒 {ts} — <b>{event}</b> · resource=<code>{resource}</code>'
+                f'{" · " + detail if detail else ""}</div>',
+                unsafe_allow_html=True,
+            )
+    else:
+        st.caption("Audit stream will populate once a paywalled tool call runs.")
+
+    with st.expander("ℹ️ x402 / FinOps Configuration Reference", expanded=False):
+        st.markdown("""
+| Parameter | Description |
+|-----------|--------------|
+| `FINOPS_MAX_USD_PER_CHAIN` | Hard ceiling per agent execution chain before a `FinOpsBudgetExceededException` forces a safe fallback |
+| `QUERY_KNOWLEDGE_PRICE_USD` | Price (USDC) the MCP server charges per `query_knowledge` call |
+| `SAMPLING_PRICE_USD` | Price (USDC) the agent client charges untrusted servers per MCP sampling request |
+| `XPAY_FACILITATOR_URL` | Xpay Staging Gateway — brokers `/verify` + `/settle` |
+| `BASE_SEPOLIA_RPC_URL` | Public RPC used only for read-only wallet balance checks |
         """)
 
 

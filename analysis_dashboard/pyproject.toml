@@ -23,7 +23,12 @@ dependencies = [
     "asyncpg>=0.31.0",
     "pgvector>=0.5.0",
     "psycopg2-binary>=2.9.9",
+    "httpx>=0.27.0",
+    "x402_core",
 ]
+
+[tool.uv.sources]
+x402_core = { workspace = true }
 
 [project.scripts]
 start-dashboard = "analysis_dashboard.app:main"

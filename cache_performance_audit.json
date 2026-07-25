@@ -1,36 +1,36 @@
 {
-  "audit_generated_at": "2026-07-12T20:08:30.440445+00:00",
+  "audit_generated_at": "2026-07-25T16:12:36.628337+00:00",
   "cache_tier_tested": "tier1_semantic_cache",
-  "distance_threshold": 0.15,
+  "distance_threshold": 0.08,
   "execution_trace": [
     {
       "step": 1,
       "event": "cache_miss",
       "prompt": "Summarize the primary causes of latency spikes in a distributed multi-agent log analysis pipeline.",
-      "latency_ms": 17750.84,
+      "latency_ms": 6837.32,
       "tier1_counters_after": {
-        "hits": 0.0,
-        "misses": 1,
-        "tokens_saved": 0.0,
-        "cost_saved_usd": 0.0
+        "hits": 1887,
+        "misses": 98,
+        "tokens_saved": 164072,
+        "cost_saved_usd": 0.024611
       },
       "verified_miss": true,
-      "response_preview": "Latency spikes in a distributed multi-agent log analysis pipeline typically stem from a combination of resource contention, network issues, and processing bottlenecks, often triggered by sudden change"
+      "response_preview": "In a distributed multi-agent log analysis pipeline, latency spikes can occur due to various factors. The primary causes of latency spikes can be summarized as follows:\n\n1. **Network Congestion**: High"
     },
     {
       "step": 2,
       "event": "cache_hit",
       "prompt": "Summarize the primary causes of latency spikes in a distributed multi-agent log analysis pipeline.",
-      "latency_ms": 1075.8,
+      "latency_ms": 1126.6,
       "tier1_counters_after": {
-        "hits": 1,
-        "misses": 1,
-        "tokens_saved": 693,
-        "cost_saved_usd": 0.000104
+        "hits": 1888,
+        "misses": 98,
+        "tokens_saved": 164685,
+        "cost_saved_usd": 0.024703
       },
       "verified_hit": true,
-      "response_preview": "Latency spikes in a distributed multi-agent log analysis pipeline typically stem from a combination of resource contention, network issues, and processing bottlenecks, often triggered by sudden change"
+      "response_preview": "In a distributed multi-agent log analysis pipeline, latency spikes can occur due to various factors. The primary causes of latency spikes can be summarized as follows:\n\n1. **Network Congestion**: High"
     }
   ],
-  "latency_speedup_factor": 16.5
+  "latency_speedup_factor": 6.07
 }

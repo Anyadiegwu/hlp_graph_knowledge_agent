@@ -1,2 +1,2 @@
 [tool.uv]
-workspace = { members = ["mcp_server", "agent_client", "analysis_dashboard"] }
+workspace = { members = ["mcp_server", "agent_client", "analysis_dashboard", "x402_core"] }

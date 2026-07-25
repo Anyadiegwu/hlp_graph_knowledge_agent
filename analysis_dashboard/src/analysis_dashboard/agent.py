@@ -43,7 +43,7 @@ class AnalysisSettings(BaseSettings):
     groq_api_key:      SecretStr | None = None
     groq_model_name:   str              = "llama-3.3-70b-versatile"
     gemini_api_key:    SecretStr | None = None
-    gemini_model_name: str              = "gemini-2.5-flash"
+    gemini_model_name: str              = "gemini-3.5-flash-lite"
     model_temperature: float            = 0.0
     neo4j_uri:         str              = ""
     neo4j_username:    str              = "neo4j"

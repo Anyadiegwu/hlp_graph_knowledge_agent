@@ -1,0 +1,58 @@
+{
+  "resource": "query_knowledge",
+  "generated_at": 1784928338.7661355,
+  "mode": "real",
+  "initial_402_challenge": {
+    "x402_version": 1,
+    "error": "payment_required",
+    "accepts": [
+      {
+        "scheme": "exact",
+        "network": "base-sepolia",
+        "caip2": "eip155:84532",
+        "max_amount_required": "100000",
+        "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+        "pay_to": "0x6A6c7d46fB0571c2f1F3dD568f7595D628af6B4E",
+        "resource": "query_knowledge",
+        "description": "Access to 'query_knowledge'.",
+        "mime_type": "application/json",
+        "max_timeout_seconds": 300,
+        "extra": {
+          "name": "USDC",
+          "version": "2"
+        }
+      }
+    ],
+    "issued_at": 1784928338.766111
+  },
+  "signature_metadata": {
+    "x402Version": 1,
+    "scheme": "exact",
+    "network": "base-sepolia",
+    "payload": {
+      "signature": "0x769ab85feb2d7fbd6dfb51f363b177ce9e012c7d096e402b168d8c4b46603eda272bc0ce288182fe6b99c0ddb2cb3c8e0ee03f6cfb9fa0a4f7546e04128c789d1b",
+      "authorization": {
+        "from": "0x0b473f9e1528d728F1345Fb383E818f9bc0b5821",
+        "to": "0x6A6c7d46fB0571c2f1F3dD568f7595D628af6B4E",
+        "value": "100000",
+        "validAfter": 0,
+        "validBefore": 1784928638,
+        "nonce": "0xbc400b1b97c775a71ef73b680899db162ab2ac31eb6c803b89323d80fe29bb30"
+      }
+    },
+    "resource": "query_knowledge"
+  },
+  "verify_result": {
+    "is_valid": true,
+    "invalid_reason": null
+  },
+  "settlement_result": {
+    "success": true,
+    "transaction_hash": "0xf949d2e36f47a63b58ef5b0b8ad2b9bf82ac3b3f6a9caf42d9efd072b511ece6",
+    "network": "base-sepolia",
+    "payer": "0x0b473f9e1528d728F1345Fb383E818f9bc0b5821",
+    "amount_atomic": "100000",
+    "settled_at": 1784928345.2061205,
+    "error": null
+  }
+}

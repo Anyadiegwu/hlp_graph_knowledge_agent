@@ -1,6 +1,6 @@
 {
   "audit_metadata": {
-    "session_id": "dd3ccb23-de48-4aed-84eb-f7d5c7ba05de",
+    "session_id": "c00fef32-cc44-4fce-9ed6-937931efca2e",
     "entries_analysed": 20,
     "text_entries_for_lime": 0,
     "structured_entries_for_shap": 7
@@ -9,7 +9,7 @@
     "nodes": [],
     "relationships": [],
     "cypher_used": "MATCH (s:Session {session_id: $anchor_id}) OPTIONAL MATCH path1 = (s)-[:TRIGGERED]->(a:AgentAction) OPTIONAL MATCH path2 = (a)-[:ROUTED_TO]->(m:MCPServerCall) OPTIONAL MATCH path3 = (m)-[:DEPENDS_ON*1..2]->(m2:MCPServerCall) RETURN s, collect(DISTINCT a) AS agent_actions, collect(DISTINCT m) AS mcp_calls, collect(DISTINCT m2) AS chained_calls",
-    "context_summary": "Neo4j Subgraph Context (anchor=dd3ccb23-de48-4aed-84eb-f7d5c7ba05de, hop_depth=2):\n  Sessions found    : 0\n  AgentAction nodes : 0\n  MCPServerCall nodes: 0",
+    "context_summary": "Neo4j Subgraph Context (anchor=c00fef32-cc44-4fce-9ed6-937931efca2e, hop_depth=2):\n  Sessions found    : 0\n  AgentAction nodes : 0\n  MCPServerCall nodes: 0",
     "node_counts": {
       "sessions": 0,
       "agent_actions": 0,
@@ -23,121 +23,121 @@
   },
   "shap_results": {
     "feature_contributions": {
-      "latency_ms": 0.4782,
-      "token_count": 0.4317,
-      "content_length": 0.4317
+      "latency_ms": 0.5492,
+      "token_count": 0.3957,
+      "content_length": 0.3942
     },
     "per_entry_shap": [
       {
-        "entry_id": "a017de95-f64a-4511-8e70-4f4d934b272b",
+        "entry_id": "94379d15-62d3-41a1-8f53-07b2111c7eb7",
         "interaction_type": "system_event",
         "is_anomalous": true,
-        "anomaly_score": 3.5502,
+        "anomaly_score": 3.9968,
         "shap_values": {
-          "latency_ms": 0.3278,
-          "token_count": 1.6112,
-          "content_length": 1.6112
+          "latency_ms": 1.1493,
+          "token_count": 1.4254,
+          "content_length": 1.4221
         },
         "feature_values": {
-          "latency_ms": 1893.96,
+          "latency_ms": 4515.13,
           "token_count": 0.0,
           "content_length": 126.0
         }
       },
       {
-        "entry_id": "a017de95-f64a-4511-8e70-4f4d934b272b",
+        "entry_id": "94379d15-62d3-41a1-8f53-07b2111c7eb7",
+        "interaction_type": "sampling_response",
+        "is_anomalous": false,
+        "anomaly_score": 0.6285,
+        "shap_values": {
+          "latency_ms": 0.2068,
+          "token_count": 0.2061,
+          "content_length": 0.2156
+        },
+        "feature_values": {
+          "latency_ms": 2657.89,
+          "token_count": 32.0,
+          "content_length": 331.0
+        }
+      },
+      {
+        "entry_id": "94379d15-62d3-41a1-8f53-07b2111c7eb7",
+        "interaction_type": "sampling_response",
+        "is_anomalous": false,
+        "anomaly_score": 0.9164,
+        "shap_values": {
+          "latency_ms": 0.3498,
+          "token_count": 0.391,
+          "content_length": 0.1756
+        },
+        "feature_values": {
+          "latency_ms": 2494.65,
+          "token_count": 35.0,
+          "content_length": 330.0
+        }
+      },
+      {
+        "entry_id": "94379d15-62d3-41a1-8f53-07b2111c7eb7",
+        "interaction_type": "sampling_response",
+        "is_anomalous": false,
+        "anomaly_score": 0.9438,
+        "shap_values": {
+          "latency_ms": 0.3792,
+          "token_count": 0.2357,
+          "content_length": 0.3289
+        },
+        "feature_values": {
+          "latency_ms": 2463.34,
+          "token_count": 33.0,
+          "content_length": 345.0
+        }
+      },
+      {
+        "entry_id": "94379d15-62d3-41a1-8f53-07b2111c7eb7",
         "interaction_type": "sampling_response",
         "is_anomalous": true,
-        "anomaly_score": 2.4702,
+        "anomaly_score": 0.9586,
         "shap_values": {
-          "latency_ms": 2.1075,
-          "token_count": 0.1813,
-          "content_length": 0.1813
+          "latency_ms": 0.7266,
+          "token_count": 0.1323,
+          "content_length": 0.0997
         },
         "feature_values": {
-          "latency_ms": 8470.62,
-          "token_count": 44.0,
-          "content_length": 286.0
+          "latency_ms": 3609.06,
+          "token_count": 31.0,
+          "content_length": 320.0
         }
       },
       {
-        "entry_id": "a017de95-f64a-4511-8e70-4f4d934b272b",
+        "entry_id": "94379d15-62d3-41a1-8f53-07b2111c7eb7",
         "interaction_type": "sampling_response",
         "is_anomalous": false,
-        "anomaly_score": 0.6054,
+        "anomaly_score": 1.2094,
         "shap_values": {
-          "latency_ms": 0.083,
-          "token_count": 0.2612,
-          "content_length": 0.2612
+          "latency_ms": 0.4345,
+          "token_count": 0.3383,
+          "content_length": 0.4366
         },
         "feature_values": {
-          "latency_ms": 3124.76,
-          "token_count": 44.0,
-          "content_length": 286.0
+          "latency_ms": 2373.79,
+          "token_count": 35.0,
+          "content_length": 358.0
         }
       },
       {
-        "entry_id": "a017de95-f64a-4511-8e70-4f4d934b272b",
+        "entry_id": "94379d15-62d3-41a1-8f53-07b2111c7eb7",
         "interaction_type": "sampling_response",
         "is_anomalous": false,
-        "anomaly_score": 0.7558,
+        "anomaly_score": 0.7202,
         "shap_values": {
-          "latency_ms": 0.298,
-          "token_count": 0.2289,
-          "content_length": 0.2289
+          "latency_ms": 0.5981,
+          "token_count": 0.041,
+          "content_length": 0.0811
         },
         "feature_values": {
-          "latency_ms": 2492.53,
-          "token_count": 44.0,
-          "content_length": 286.0
-        }
-      },
-      {
-        "entry_id": "a017de95-f64a-4511-8e70-4f4d934b272b",
-        "interaction_type": "sampling_response",
-        "is_anomalous": false,
-        "anomaly_score": 0.7486,
-        "shap_values": {
-          "latency_ms": 0.2889,
-          "token_count": 0.2298,
-          "content_length": 0.2298
-        },
-        "feature_values": {
-          "latency_ms": 2515.84,
-          "token_count": 44.0,
-          "content_length": 286.0
-        }
-      },
-      {
-        "entry_id": "a017de95-f64a-4511-8e70-4f4d934b272b",
-        "interaction_type": "sampling_response",
-        "is_anomalous": false,
-        "anomaly_score": 0.5969,
-        "shap_values": {
-          "latency_ms": 0.0661,
-          "token_count": 0.2654,
-          "content_length": 0.2654
-        },
-        "feature_values": {
-          "latency_ms": 3188.21,
-          "token_count": 44.0,
-          "content_length": 286.0
-        }
-      },
-      {
-        "entry_id": "a017de95-f64a-4511-8e70-4f4d934b272b",
-        "interaction_type": "sampling_response",
-        "is_anomalous": false,
-        "anomaly_score": 0.6635,
-        "shap_values": {
-          "latency_ms": 0.176,
-          "token_count": 0.2438,
-          "content_length": 0.2438
-        },
-        "feature_values": {
-          "latency_ms": 2825.11,
-          "token_count": 44.0,
-          "content_length": 286.0
+          "latency_ms": 2404.14,
+          "token_count": 29.0,
+          "content_length": 316.0
         }
       }
     ],

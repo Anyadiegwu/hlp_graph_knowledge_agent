@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import time
 import uuid
 import warnings
@@ -41,6 +42,18 @@ from agent_client.log_store import (
     NS,
     get_log_store,
 )
+from agent_client.x402_client import invoke_with_payment_retry
+from x402_core.audit import append_audit_entry
+from x402_core.constants import usd_to_atomic
+from x402_core.exceptions import (
+    FinOpsBudgetExceededException,
+    X402PaymentRequiredError,
+    X402VerificationError,
+)
+from x402_core.facilitator import get_facilitator_client
+from x402_core.finops import get_governor
+from x402_core.schemas import PaymentRequirements, X402Challenge, X402PaymentPayload
+from x402_core.wallet import get_default_wallet
 
 _REPO_ROOT  = Path(__file__).resolve().parents[3]
 LOG_FILE    = _REPO_ROOT / "mcp_agent_system.log"
@@ -87,7 +100,7 @@ class Settings(BaseSettings):
     groq_api_key:      SecretStr | None = None
     groq_model_name:   str              = "llama-3.3-70b-versatile"
     gemini_api_key:    SecretStr | None = None
-    gemini_model_name: str              = "gemini-2.5-flash"
+    gemini_model_name: str              = "gemini-3.5-flash-lite"
     model_temperature: float            = 0.0
     mcp_server_url:    str              = "http://localhost:8000/mcp"
     use_groq:          bool             = True
@@ -102,6 +115,11 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+TRUSTED_SAMPLING_SERVERS = {
+    s.strip() for s in os.getenv("TRUSTED_SAMPLING_SERVERS", "ThinkingAgentServer").split(",") if s.strip()
+}
+SAMPLING_PRICE_USD = float(os.getenv("SAMPLING_PRICE_USD", "0.002"))
 
 log_store: HLPLogStore = get_log_store()
 client_logger.info("Vector log store: Supabase (pooled)")
@@ -354,6 +372,7 @@ def _build_resilient_chain(runnable: Any, model: BaseChatModel) -> Any:
             model=settings.groq_model_name,
             temperature=settings.model_temperature,
             api_key=settings.groq_api_key,
+            cache=False,
         )
         if settings.groq_api_key
         else model
@@ -373,19 +392,7 @@ def _build_resilient_chain(runnable: Any, model: BaseChatModel) -> Any:
     )
     return resilient
 
-
 def _build_primary_model() -> BaseChatModel:
-    if settings.gemini_api_key:
-        try:
-            from langchain_google_genai import ChatGoogleGenerativeAI
-            return ChatGoogleGenerativeAI(
-                model=settings.gemini_model_name,
-                temperature=settings.model_temperature,
-                google_api_key=settings.gemini_api_key.get_secret_value(),
-            )
-        except Exception as exc:
-            client_logger.warning("Gemini primary model failed (%s) — trying Groq.", exc)
-
     if settings.use_groq and settings.groq_api_key:
         try:
             from langchain_groq import ChatGroq
@@ -394,16 +401,11 @@ def _build_primary_model() -> BaseChatModel:
                 temperature=settings.model_temperature,
                 api_key=settings.groq_api_key,
                 model_kwargs={"parallel_tool_calls": False},
+                cache=False,
             )
         except Exception as exc:
-            client_logger.warning("Groq init failed (%s) — trying Ollama.", exc)
+            client_logger.warning("Groq init failed (%s) — trying Gemini.", exc)
 
-    from langchain_ollama import ChatOllama
-    client_logger.warning("No cloud API keys — falling back to Ollama.")
-    return ChatOllama(model=settings.ollama_model_name, temperature=settings.model_temperature)
-
-
-def _build_sampling_model() -> BaseChatModel:
     if settings.gemini_api_key:
         try:
             from langchain_google_genai import ChatGoogleGenerativeAI
@@ -411,18 +413,35 @@ def _build_sampling_model() -> BaseChatModel:
                 model=settings.gemini_model_name,
                 temperature=settings.model_temperature,
                 google_api_key=settings.gemini_api_key.get_secret_value(),
+                cache=False,
+            )
+        except Exception as exc:
+            client_logger.warning("Gemini primary model failed (%s) — trying Ollama.", exc)
+
+    from langchain_ollama import ChatOllama
+    client_logger.warning("No cloud API keys — falling back to Ollama.")
+    return ChatOllama(model=settings.ollama_model_name, temperature=settings.model_temperature, cache=False)
+
+def _build_sampling_model() -> BaseChatModel:
+    if settings.groq_api_key:
+        try:
+            from langchain_groq import ChatGroq
+            return ChatGroq(
+                model=settings.groq_model_name,
+                temperature=settings.model_temperature,
+                api_key=settings.groq_api_key,
             )
         except Exception as exc:
             client_logger.warning("Gemini sampling model failed (%s) — trying Groq.", exc)
 
-    if settings.groq_api_key:
-        from langchain_groq import ChatGroq
-        return ChatGroq(
-            model=settings.groq_model_name,
+    if settings.gemini_api_key: 
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        return ChatGoogleGenerativeAI(
+            model=settings.gemini_model_name,
             temperature=settings.model_temperature,
-            api_key=settings.groq_api_key,
+            google_api_key=settings.gemini_api_key.get_secret_value(),
         )
-
+         
     raise RuntimeError("No model available for MCP Sampling. Set GEMINI_API_KEY or GROQ_API_KEY.")
 
 class TrackedRedisSemanticCache(RedisSemanticCache):
@@ -490,6 +509,7 @@ class TrackedRedisSemanticCache(RedisSemanticCache):
         text = "".join(getattr(g, "text", "") for g in generations)
         return max(1, len(text) // self._AVG_CHARS_PER_TOKEN)
     
+SEMANTIC_CACHE_DISTANCE_THRESHOLD = 0.08
 def _build_semantic_cache() -> RedisSemanticCache | None:
     if not settings.redis_url:
         client_logger.warning("REDIS_URL not set - semantic cache disabled.")
@@ -510,9 +530,12 @@ def _build_semantic_cache() -> RedisSemanticCache | None:
         cache = TrackedRedisSemanticCache(
             redis_url=settings.redis_url.get_secret_value(),
             embeddings=cache_embeddings,
-            distance_threshold=0.15,
+            distance_threshold=SEMANTIC_CACHE_DISTANCE_THRESHOLD,
         )
-        client_logger.info("Redis semantic cache enabled (distance_threshold=0.15)")
+        client_logger.info(
+            "Redis semantic cache enabled (distance_threshold=%s)",
+            SEMANTIC_CACHE_DISTANCE_THRESHOLD,
+        )
         return cache
     except Exception as exc:
         client_logger.warning("Semantic cache init failed (%s) - continuing uncached.", exc)
@@ -524,6 +547,30 @@ if _semantic_cache is not None:
 
 primary_model  = _build_primary_model()
 sampling_model = _build_sampling_model()
+
+def _build_uncached_sampling_model() -> BaseChatModel:
+    """Same as sampling_model, but with caching explicitly disabled — used
+    for MCP-server-initiated structured calls (ToT thought/verdict, critic,
+    corrector) where near-identical boilerplate across genuinely distinct
+    calls causes false-positive semantic cache hits, regardless of how
+    tight the distance_threshold is set."""
+    if settings.gemini_api_key:
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        return ChatGoogleGenerativeAI(
+            model=settings.gemini_model_name,
+            temperature=settings.model_temperature,
+            google_api_key=settings.gemini_api_key.get_secret_value(),
+            cache=False,
+        )
+    from langchain_groq import ChatGroq
+    return ChatGroq(
+        model=settings.groq_model_name,
+        temperature=settings.model_temperature,
+        api_key=settings.groq_api_key,
+        cache=False,
+    )
+
+sampling_model_uncached = _build_uncached_sampling_model()
 client_logger.info("Primary model : %s", type(primary_model).__name__)
 client_logger.info("Sampling model: %s", type(sampling_model).__name__)
 
@@ -546,6 +593,72 @@ async def sampling_callback(
 ) -> CreateMessageResult:
     client_logger.info("MCP Sampling request | max_tokens=%s", params.maxTokens)
     _t0 = time.perf_counter()
+
+    # --- Client-Side Sampling 402 Financial Challenge ----------------------
+    # Any caller that isn't our own trusted first-party server must present
+    # a valid x402 payment (carried in the spec's free-form `metadata`
+    # field) before this client spends its local LLM budget on their
+    # behalf. Untrusted + unpaid -> raise, which the MCP session surfaces
+    # back to the requesting server as a reciprocal payment-required error.
+    request_metadata = getattr(params, "metadata", None) or {}
+    caller_server = request_metadata.get("caller_server")
+    if caller_server is not None and caller_server not in TRUSTED_SAMPLING_SERVERS:
+        wallet = get_default_wallet()
+        requirements = PaymentRequirements(
+            max_amount_required=usd_to_atomic(SAMPLING_PRICE_USD),
+            pay_to=(wallet.address if wallet else os.getenv("AGENT_SAMPLING_PAY_TO_ADDRESS", "")),
+            resource=f"mcp_sampling:{caller_server}",
+            description="This client's local LLM compute is not free for third-party MCP servers.",
+        )
+        x_payment = request_metadata.get("x_payment")
+        if not x_payment:
+            challenge = X402Challenge(accepts=[requirements])
+            client_logger.warning(
+                "Reciprocal 402: untrusted server '%s' requested sampling with no payment. Refusing.",
+                caller_server,
+            )
+            append_audit_entry(
+                "reciprocal_challenge_issued",
+                resource=requirements.resource,
+                caller_server=caller_server,
+                price_usd=SAMPLING_PRICE_USD,
+            )
+            raise X402PaymentRequiredError(
+                challenge.to_json(), f"Payment required for sampling access from '{caller_server}'."
+            )
+        try:
+            payment = X402PaymentPayload.model_validate_json(x_payment)
+        except Exception as exc:
+            raise X402VerificationError(f"malformed x_payment from '{caller_server}': {exc}") from exc
+        verify_result = await get_facilitator_client().verify(payment, requirements)
+        append_audit_entry(
+            "reciprocal_verify_attempted",
+            resource=requirements.resource,
+            caller_server=caller_server,
+            payer=payment.payload.authorization.from_address,
+            is_valid=verify_result.is_valid,
+            invalid_reason=verify_result.invalid_reason,
+        )
+        if not verify_result.is_valid:
+            client_logger.warning(
+                "Reciprocal 402: payment from '%s' failed verification: %s",
+                caller_server, verify_result.invalid_reason,
+            )
+            raise X402VerificationError(verify_result.invalid_reason or "signature/window invalid")
+
+        settlement = await get_facilitator_client().settle(payment, requirements)
+        append_audit_entry(
+            "reciprocal_settlement_recorded",
+            resource=requirements.resource,
+            caller_server=caller_server,
+            payer=payment.payload.authorization.from_address,
+            amount_atomic=requirements.max_amount_required,
+            success=settlement.success,
+            transaction_hash=settlement.transaction_hash,
+            error=settlement.error,
+            direction="earned",
+        )
+        client_logger.info("Reciprocal 402 satisfied — proceeding with sampling for '%s'.", caller_server)
 
     prompt_texts = []
     lc_messages  = []
@@ -576,9 +689,11 @@ async def sampling_callback(
 
     response_text = None
     model_used = settings.gemini_model_name if settings.gemini_api_key else settings.groq_model_name
-
+    is_structured_call = any(t.lstrip().startswith("[TASK:") for t in prompt_texts)
+    active_sampling_model = sampling_model_uncached if is_structured_call else sampling_model
+    
     try:
-        response = await sampling_model.ainvoke(lc_messages)
+        response = await active_sampling_model.ainvoke(lc_messages)
         response_text = (
             response.content if isinstance(response.content, str) else str(response.content)
         )
@@ -765,6 +880,7 @@ async def reflect_answer_tool(
         "draft_answer": draft_answer,
         "original_query": original_query,
         "constraints": constraints,
+        "session_id": SESSION_ID,
     })
 
     latency = (time.perf_counter() - _t0) * 1000
@@ -813,7 +929,7 @@ async def query_knowledge_tool(query: str) -> str:
     if "query_knowledge" not in _remote_tools:
         return "Error: query_knowledge tool not available on server."
 
-    result = await _remote_tools["query_knowledge"].ainvoke({"query": query})
+    result = await invoke_with_payment_retry(_remote_tools["query_knowledge"], {"query": query, "session_id": SESSION_ID})
     latency = (time.perf_counter() - _t0) * 1000
 
     if isinstance(result, str):
@@ -971,6 +1087,23 @@ async def run_query(agent: Any, user_query: str) -> str:
     )
 
     resilient_agent = _build_resilient_chain(agent, primary_model)
+    governor = get_governor()
+    try:
+        governor.preflight(SESSION_ID, projected_usd=0.01, step_label="agent_planning_cycle")
+    except FinOpsBudgetExceededException as exc:
+        client_logger.warning("FinOps ceiling hit before planning cycle started: %s", exc)
+        await _persist(
+            interaction_type=MCPInteractionType.SYSTEM_EVENT,
+            content=f"FinOps budget exceeded — planning cycle refused. {exc}",
+            namespace_path=NS.AGENT_PLANNING,
+            component="agent_client",
+            embed=False,
+        )
+        return (
+            "I've reached this session's spending ceiling for LLM calls, so I'm "
+            "returning a safe, static response instead of continuing to reason: "
+            "please try a narrower question, or start a new session to reset the budget."
+        )
 
     final_response = ""
     _t0 = time.perf_counter()
@@ -979,6 +1112,7 @@ async def run_query(agent: Any, user_query: str) -> str:
         result = await resilient_agent.ainvoke(
             {"messages": [HumanMessage(content=user_query)]}
         )
+        governor.record_spend(SESSION_ID, 0.01)
 
         if isinstance(result, dict) and "absolute_fallback" in result:
             final_response = result["messages"][0].content
@@ -1146,7 +1280,7 @@ async def _generate_cache_performance_audit() -> None:
     audit = {
         "audit_generated_at": datetime.now(timezone.utc).isoformat(),
         "cache_tier_tested": "tier1_semantic_cache",
-        "distance_threshold": 0.15,
+        "distance_threshold": SEMANTIC_CACHE_DISTANCE_THRESHOLD,
         "execution_trace": [
             {
                 "step": 1,
@@ -1199,9 +1333,7 @@ async def _async_main() -> None:
     agent, _ = _build_agent()
 
     queries = [
-        "What is MCP Sampling and how does it work?",
-        "How should I design a LangChain agent that uses MCP tools?",
-        "What are the LangChain resilience primitives for building fault-tolerant chains?",
+        "Explain how MCP sampling works and how it differs from a regular tool call."
     ]
 
     for query in queries:
